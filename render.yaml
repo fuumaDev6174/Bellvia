@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: bellevia
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_APP_URL
+        sync: false

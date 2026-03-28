@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+build
+.git
+.claude
+.vscode
+.idea
+docs
+supabase/.temp
+*.log
+*.local
+.env
+.env.local
+.env.production
+.DS_Store
+Thumbs.db
