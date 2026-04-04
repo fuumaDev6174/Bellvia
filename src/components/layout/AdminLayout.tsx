@@ -6,6 +6,8 @@ import {
   Users,
   UserCircle,
   Store,
+  JapaneseYen,
+  Package,
   LogOut,
   Menu as MenuIcon,
   Scissors,
@@ -22,6 +24,8 @@ const navItems = [
   { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理' },
   { to: '/admin/staff', icon: Users, label: 'スタッフ管理' },
   { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
+  { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
+  { to: '/admin/inventory', icon: Package, label: '在庫管理' },
   { to: '/admin/stores', icon: Store, label: '店舗管理' },
 ]
 

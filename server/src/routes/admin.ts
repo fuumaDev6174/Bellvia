@@ -392,4 +392,147 @@ admin.get('/customers/:id/reservations', async (c) => {
   return c.json({ data: data ?? [] })
 })
 
+// ---------- Sales ----------
+
+// GET /api/admin/sales
+admin.get('/sales', async (c) => {
+  const staff = c.get('staff')
+  const storeId = c.req.query('storeId')
+  const startDate = c.req.query('startDate')
+  const endDate = c.req.query('endDate')
+
+  let query = supabaseAdmin
+    .from('sales')
+    .select(`
+      *,
+      staff:staff_id (display_name),
+      customer:customer_id (name),
+      store:store_id (name)
+    `)
+    .eq('company_id', staff.companyId)
+    .order('paid_at', { ascending: false })
+
+  if (storeId) query = query.eq('store_id', storeId)
+  if (startDate) query = query.gte('paid_at', `${startDate}T00:00:00`)
+  if (endDate) query = query.lte('paid_at', `${endDate}T23:59:59`)
+
+  const { data, error } = await query
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// GET /api/admin/sales/summary
+admin.get('/sales/summary', async (c) => {
+  const staff = c.get('staff')
+  const storeId = c.req.query('storeId')
+  const startDate = c.req.query('startDate')
+  const endDate = c.req.query('endDate')
+
+  let query = supabaseAdmin
+    .from('sales')
+    .select('amount, payment_method, store_id, paid_at')
+    .eq('company_id', staff.companyId)
+
+  if (storeId) query = query.eq('store_id', storeId)
+  if (startDate) query = query.gte('paid_at', `${startDate}T00:00:00`)
+  if (endDate) query = query.lte('paid_at', `${endDate}T23:59:59`)
+
+  const { data, error } = await query
+  if (error) return c.json({ message: error.message }, 500)
+
+  const sales = data ?? []
+  const totalAmount = sales.reduce((sum, s) => sum + s.amount, 0)
+  const totalCount = sales.length
+
+  // By payment method
+  const byPaymentMethod: Record<string, { count: number; amount: number }> = {}
+  for (const s of sales) {
+    if (!byPaymentMethod[s.payment_method]) byPaymentMethod[s.payment_method] = { count: 0, amount: 0 }
+    byPaymentMethod[s.payment_method].count++
+    byPaymentMethod[s.payment_method].amount += s.amount
+  }
+
+  // By store
+  const byStore: Record<string, { count: number; amount: number }> = {}
+  for (const s of sales) {
+    if (!byStore[s.store_id]) byStore[s.store_id] = { count: 0, amount: 0 }
+    byStore[s.store_id].count++
+    byStore[s.store_id].amount += s.amount
+  }
+
+  // Fetch store names
+  const { data: stores } = await supabaseAdmin
+    .from('stores')
+    .select('id, name')
+    .eq('company_id', staff.companyId)
+
+  const storeMap = Object.fromEntries((stores ?? []).map(s => [s.id, s.name]))
+  const byStoreNamed = Object.fromEntries(
+    Object.entries(byStore).map(([id, v]) => [storeMap[id] ?? id, v])
+  )
+
+  return c.json({
+    data: { totalAmount, totalCount, byPaymentMethod, byStore: byStoreNamed },
+  })
+})
+
+// ---------- Inventory ----------
+
+// GET /api/admin/inventory/items
+admin.get('/inventory/items', async (c) => {
+  const staff = c.get('staff')
+
+  const { data, error } = await supabaseAdmin
+    .from('inventory_items')
+    .select('*')
+    .eq('company_id', staff.companyId)
+    .eq('is_active', true)
+    .order('category')
+    .order('name')
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// GET /api/admin/inventory/stock
+admin.get('/inventory/stock', async (c) => {
+  const staff = c.get('staff')
+  const storeId = c.req.query('storeId')
+
+  let query = supabaseAdmin
+    .from('inventory_stock')
+    .select(`
+      *,
+      item:item_id (name, category, unit, cost_price, selling_price),
+      store:store_id (name)
+    `)
+    .eq('company_id', staff.companyId)
+
+  if (storeId) query = query.eq('store_id', storeId)
+
+  const { data, error } = await query
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// PATCH /api/admin/inventory/stock/:id
+admin.patch('/inventory/stock/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ quantity?: number; minQuantity?: number }>()
+
+  const updateData: Record<string, unknown> = {}
+  if (body.quantity !== undefined) updateData.quantity = body.quantity
+  if (body.minQuantity !== undefined) updateData.min_quantity = body.minQuantity
+
+  const { data, error } = await supabaseAdmin
+    .from('inventory_stock')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
 export { admin }
