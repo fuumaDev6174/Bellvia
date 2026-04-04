@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useStoreContext } from '@/hooks/useStoreContext'
-import { Card, CardContent, CardHeader, Input, Select, Spinner } from '@/components/ui'
+import { Card, CardContent, CardHeader, Input, Spinner } from '@/components/ui'
+import { StoreSelector } from '@/components/ui/StoreSelector'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
 import { TIMEZONE } from '@/lib/constants'
 
@@ -41,15 +41,15 @@ interface SalesSummary {
 }
 
 export default function SalesPage() {
-  const { activeStoreId } = useStoreContext()
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
-  const [viewScope, setViewScope] = useState<'store' | 'all'>('store')
 
-  const storeParam = viewScope === 'store' && activeStoreId ? `&storeId=${activeStoreId}` : ''
+  const isAllStores = selectedStoreId === null
+  const storeParam = selectedStoreId ? `&storeId=${selectedStoreId}` : ''
 
   const { data: summary, isLoading: loadingSummary } = useQuery<SalesSummary>({
-    queryKey: ['sales-summary', viewScope, activeStoreId, startDate, endDate],
+    queryKey: ['sales-summary', selectedStoreId, startDate, endDate],
     queryFn: () =>
       api<SalesSummary>(
         `/api/admin/sales/summary?startDate=${startDate}&endDate=${endDate}${storeParam}`,
@@ -57,7 +57,7 @@ export default function SalesPage() {
   })
 
   const { data: sales, isLoading: loadingSales } = useQuery<SaleRecord[]>({
-    queryKey: ['sales', viewScope, activeStoreId, startDate, endDate],
+    queryKey: ['sales', selectedStoreId, startDate, endDate],
     queryFn: () =>
       api<SaleRecord[]>(
         `/api/admin/sales?startDate=${startDate}&endDate=${endDate}${storeParam}`,
@@ -73,15 +73,14 @@ export default function SalesPage() {
       {/* Filters */}
       <Card>
         <div className="flex flex-wrap items-end gap-4 p-4">
-          <Select
-            label="表示範囲"
-            value={viewScope}
-            onChange={(e) => setViewScope(e.target.value as 'store' | 'all')}
-            options={[
-              { value: 'store', label: '���択中の店舗' },
-              { value: 'all', label: '全店舗（総括）' },
-            ]}
-          />
+          <div className="w-64">
+            <StoreSelector
+              value={selectedStoreId}
+              onChange={setSelectedStoreId}
+              allowAll
+              label="店舗"
+            />
+          </div>
           <Input
             label="開始日"
             type="date"
@@ -142,7 +141,7 @@ export default function SalesPage() {
           </div>
 
           {/* Store breakdown (only in all-store view) */}
-          {viewScope === 'all' && Object.keys(summary.byStore).length > 0 && (
+          {isAllStores && Object.keys(summary.byStore).length > 0 && (
             <Card>
               <CardHeader>
                 <h2 className="text-lg font-semibold text-gray-900">店舗別売上</h2>
@@ -178,7 +177,7 @@ export default function SalesPage() {
               <thead>
                 <tr className="border-b bg-gray-50 text-left">
                   <th className="px-4 py-3 font-medium text-gray-500">日時</th>
-                  {viewScope === 'all' && (
+                  {isAllStores && (
                     <th className="px-4 py-3 font-medium text-gray-500">店舗</th>
                   )}
                   <th className="px-4 py-3 font-medium text-gray-500">顧客</th>
@@ -193,7 +192,7 @@ export default function SalesPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {formatDateTimeJP(sale.paid_at)}
                     </td>
-                    {viewScope === 'all' && (
+                    {isAllStores && (
                       <td className="px-4 py-3">{sale.store?.name ?? '-'}</td>
                     )}
                     <td className="px-4 py-3">{sale.customer?.name ?? '-'}</td>
@@ -208,7 +207,7 @@ export default function SalesPage() {
                 ))}
                 {(!sales || sales.length === 0) && (
                   <tr>
-                    <td colSpan={viewScope === 'all' ? 6 : 5} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={isAllStores ? 6 : 5} className="px-4 py-8 text-center text-gray-400">
                       売上データがありません
                     </td>
                   </tr>

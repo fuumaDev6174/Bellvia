@@ -3,8 +3,8 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
-import { useStoreContext } from '@/hooks/useStoreContext'
-import { Card, CardHeader, Select, Spinner, Badge, Input, Button } from '@/components/ui'
+import { Card, CardHeader, Spinner, Badge, Input, Button } from '@/components/ui'
+import { StoreSelector } from '@/components/ui/StoreSelector'
 import { formatPrice } from '@/lib/utils'
 import { AlertTriangle } from 'lucide-react'
 
@@ -19,15 +19,15 @@ interface InventoryStock {
 }
 
 export default function InventoryPage() {
-  const { activeStoreId } = useStoreContext()
-  const [viewScope, setViewScope] = useState<'store' | 'all'>('store')
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editQty, setEditQty] = useState('')
 
-  const storeParam = viewScope === 'store' && activeStoreId ? `?storeId=${activeStoreId}` : ''
+  const isAllStores = selectedStoreId === null
+  const storeParam = selectedStoreId ? `?storeId=${selectedStoreId}` : ''
 
   const { data: stock, isLoading } = useQuery<InventoryStock[]>({
-    queryKey: ['inventory-stock', viewScope, activeStoreId],
+    queryKey: ['inventory-stock', selectedStoreId],
     queryFn: () => api<InventoryStock[]>(`/api/admin/inventory/stock${storeParam}`),
   })
 
@@ -79,15 +79,14 @@ export default function InventoryPage() {
 
       <Card>
         <div className="flex flex-wrap items-end gap-4 p-4">
-          <Select
-            label="表示範囲"
-            value={viewScope}
-            onChange={(e) => setViewScope(e.target.value as 'store' | 'all')}
-            options={[
-              { value: 'store', label: '選択中の店舗' },
-              { value: 'all', label: '全店舗（総括）' },
-            ]}
-          />
+          <div className="w-64">
+            <StoreSelector
+              value={selectedStoreId}
+              onChange={setSelectedStoreId}
+              allowAll
+              label="店舗"
+            />
+          </div>
         </div>
       </Card>
 
@@ -95,6 +94,12 @@ export default function InventoryPage() {
         <div className="flex justify-center py-12">
           <Spinner className="h-8 w-8" />
         </div>
+      ) : Object.keys(grouped).length === 0 ? (
+        <Card>
+          <div className="px-6 py-12 text-center text-sm text-gray-400">
+            在庫データがありません
+          </div>
+        </Card>
       ) : (
         Object.entries(grouped).map(([category, items]) => (
           <Card key={category}>
@@ -106,7 +111,7 @@ export default function InventoryPage() {
                 <thead>
                   <tr className="border-b bg-gray-50 text-left">
                     <th className="px-4 py-3 font-medium text-gray-500">商品名</th>
-                    {viewScope === 'all' && (
+                    {isAllStores && (
                       <th className="px-4 py-3 font-medium text-gray-500">店舗</th>
                     )}
                     <th className="px-4 py-3 font-medium text-gray-500">単位</th>
@@ -124,7 +129,7 @@ export default function InventoryPage() {
                     return (
                       <tr key={s.id} className={isLow ? 'bg-amber-50' : 'hover:bg-gray-50'}>
                         <td className="px-4 py-3 font-medium">{s.item?.name ?? '-'}</td>
-                        {viewScope === 'all' && (
+                        {isAllStores && (
                           <td className="px-4 py-3">{s.store?.name ?? '-'}</td>
                         )}
                         <td className="px-4 py-3">{s.item?.unit ?? '-'}</td>
