@@ -1,17 +1,20 @@
 import { config } from 'dotenv'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 
 // Load .env from project root (parent of server/)
-config({ path: resolve(import.meta.dirname, '../../.env') })
+const __dirname = dirname(fileURLToPath(import.meta.url))
+config({ path: resolve(__dirname, '../../.env') })
 
-import { serve } from '@hono/node-server'
-import { serveStatic } from '@hono/node-server/serve-static'
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
-import { auth } from './routes/auth.js'
-import { pub } from './routes/public.js'
-import { admin } from './routes/admin.js'
+// Dynamic imports AFTER dotenv is loaded
+const { serve } = await import('@hono/node-server')
+const { serveStatic } = await import('@hono/node-server/serve-static')
+const { Hono } = await import('hono')
+const { cors } = await import('hono/cors')
+const { logger } = await import('hono/logger')
+const { auth } = await import('./routes/auth.js')
+const { pub } = await import('./routes/public.js')
+const { admin } = await import('./routes/admin.js')
 
 const app = new Hono()
 
