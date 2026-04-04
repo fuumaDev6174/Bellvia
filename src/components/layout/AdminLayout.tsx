@@ -1,4 +1,5 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   CalendarDays,
@@ -13,6 +14,7 @@ import {
   Menu as MenuIcon,
   Scissors,
   Eye,
+  Search,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useSignOut } from '@/hooks/useAuth'
@@ -22,6 +24,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { APP_NAME, ROLE_LABELS } from '@/lib/constants'
+import { Modal, Button } from '@/components/ui'
 import type { Store } from '@/types/models'
 import type { StaffRole } from '@/types/models'
 import type { LucideIcon } from 'lucide-react'
@@ -46,23 +49,28 @@ const navItems: NavItem[] = [
   { to: '/admin/business-types', icon: Tags, label: '業種管理', roles: ['company_admin'] },
 ]
 
-const ROLE_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '会社管理者（本来のロール）' },
+const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'store_manager', label: '店長として表示' },
   { value: 'stylist', label: 'スタイリストとして表示' },
 ]
 
 export function AdminLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const signOut = useSignOut()
   const { staff, role, actualRole, isOverriding } = useCurrentStaff()
   const { activeStoreId, setSelectedStoreId, canSwitchStore } = useStoreContext()
-  const { sidebarOpen, toggleSidebar, roleOverride, setRoleOverride } = useUIStore()
+  const { sidebarOpen, toggleSidebar, roleOverride, overrideStoreId, clearOverride } = useUIStore()
+  const setRoleOverride = useUIStore((s) => s.setRoleOverride)
+
+  // Store picker modal state
+  const [pickingRole, setPickingRole] = useState<StaffRole | null>(null)
+  const [storeSearch, setStoreSearch] = useState('')
 
   const { data: stores } = useQuery<Store[]>({
     queryKey: ['admin-stores'],
     queryFn: () => api<Store[]>('/api/admin/stores'),
-    enabled: canSwitchStore,
+    enabled: actualRole === 'company_admin',
   })
 
   // Filter nav items by effective role
@@ -70,15 +78,44 @@ export function AdminLayout() {
     (item) => !item.roles || (role && item.roles.includes(role)),
   )
 
+  const handleRoleSelect = (selectedRole: StaffRole) => {
+    setPickingRole(selectedRole)
+    setStoreSearch('')
+  }
+
+  const handleStoreSelect = (storeId: string) => {
+    if (!pickingRole) return
+    setRoleOverride(pickingRole, storeId)
+    setPickingRole(null)
+    setStoreSearch('')
+    navigate('/admin')
+  }
+
+  const handleClearOverride = () => {
+    clearOverride()
+    navigate('/admin')
+  }
+
+  const filteredStores = (stores ?? []).filter((s) => {
+    if (!storeSearch) return true
+    const q = storeSearch.toLowerCase()
+    return s.name.toLowerCase().includes(q) || (s.address ?? '').toLowerCase().includes(q)
+  })
+
+  const overrideStoreName = stores?.find(s => s.id === overrideStoreId)?.name
+
   return (
     <div className="min-h-screen flex bg-gray-50">
       {/* Override banner */}
       {isOverriding && (
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
           <Eye className="h-4 w-4" />
-          <span>{ROLE_LABELS[roleOverride ?? ''] ?? roleOverride} ビューでプレビュー中</span>
+          <span>
+            {overrideStoreName && <span className="font-bold">{overrideStoreName}</span>}
+            {' '}の{ROLE_LABELS[roleOverride ?? ''] ?? roleOverride}ビューでプレビュー中
+          </span>
           <button
-            onClick={() => setRoleOverride(null)}
+            onClick={handleClearOverride}
             className="rounded bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
           >
             解除
@@ -140,7 +177,8 @@ export function AdminLayout() {
 
       {/* Main content */}
       <div className={cn('flex-1 flex flex-col min-w-0', isOverriding && 'pt-9')}>
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3 lg:px-6"
+        <header
+          className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3 lg:px-6"
           style={isOverriding ? { top: '36px' } : undefined}
         >
           <button
@@ -150,8 +188,8 @@ export function AdminLayout() {
             <MenuIcon className="h-5 w-5" />
           </button>
 
-          {/* Store selector (admin only) */}
-          {canSwitchStore && stores && (
+          {/* Store selector (admin, not overriding) */}
+          {canSwitchStore && !isOverriding && stores && (
             <select
               value={activeStoreId ?? ''}
               onChange={(e) => setSelectedStoreId?.(e.target.value || null)}
@@ -165,22 +203,20 @@ export function AdminLayout() {
 
           <div className="flex-1" />
 
-          {/* Role switcher (company_admin only) */}
-          {actualRole === 'company_admin' && (
-            <select
-              value={roleOverride ?? ''}
-              onChange={(e) => setRoleOverride((e.target.value || null) as StaffRole | null)}
-              className={cn(
-                'rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500',
-                isOverriding
-                  ? 'border-amber-400 bg-amber-50 text-amber-700'
-                  : 'border-gray-300 text-gray-700',
-              )}
-            >
+          {/* Role switcher buttons (company_admin only, not already overriding) */}
+          {actualRole === 'company_admin' && !isOverriding && (
+            <div className="flex gap-2">
               {ROLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <button
+                  key={opt.value}
+                  onClick={() => handleRoleSelect(opt.value)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  {opt.label}
+                </button>
               ))}
-            </select>
+            </div>
           )}
 
           <button
@@ -196,6 +232,57 @@ export function AdminLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Store picker modal */}
+      <Modal
+        isOpen={pickingRole !== null}
+        onClose={() => setPickingRole(null)}
+        title={`${ROLE_LABELS[pickingRole ?? ''] ?? ''}として表示する店舗を選択`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={storeSearch}
+              onChange={(e) => setStoreSearch(e.target.value)}
+              placeholder="店舗名・住所で検索..."
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              autoFocus
+            />
+          </div>
+
+          {/* Store list */}
+          <div className="max-h-80 overflow-y-auto divide-y rounded-lg border">
+            {filteredStores.map((store) => (
+              <button
+                key={store.id}
+                onClick={() => handleStoreSelect(store.id)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+              >
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{store.name}</p>
+                  {store.address && (
+                    <p className="text-xs text-gray-500">{store.address}</p>
+                  )}
+                </div>
+                <span
+                  className={`h-2 w-2 rounded-full ${store.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                />
+              </button>
+            ))}
+            {filteredStores.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm text-gray-400">該当する店舗がありません</p>
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setPickingRole(null)}>キャンセル</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
