@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
 import { STATUS_LABELS, STATUS_COLORS } from '@/lib/constants'
 import type { Customer, ReservationWithDetails } from '@/types/models'
@@ -16,16 +16,7 @@ interface CustomerDetailModalProps {
 function useCustomerReservations(customerId: string | undefined) {
   return useQuery<ReservationWithDetails[]>({
     queryKey: ['customer-reservations', customerId],
-    queryFn: async () => {
-      if (!customerId) throw new Error('顧客IDが必要です')
-      const { data, error } = await supabase
-        .from('reservations')
-        .select('*, staff:staff_id(display_name, photo_url), menu:menu_id(name, price, duration_min, category)')
-        .eq('customer_id', customerId)
-        .order('start_at', { ascending: false })
-      if (error) throw error
-      return data as ReservationWithDetails[]
-    },
+    queryFn: () => api<ReservationWithDetails[]>(`/api/admin/customers/${customerId}/reservations`),
     enabled: !!customerId,
   })
 }

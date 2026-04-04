@@ -1,64 +1,54 @@
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import type { Staff } from '@/types/models'
+
+type SessionResponse = {
+  user: { id: string; email: string | undefined }
+  staff: Staff
+} | null
 
 export function useAuthListener() {
-  const { setSession, setCurrentStaff, setLoading } = useAuthStore()
+  const { setAuth, setLoading } = useAuthStore()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) {
-        fetchStaff(session.user.id)
-      } else {
+    api<SessionResponse>('/api/auth/session')
+      .then((data) => {
+        if (data) {
+          setAuth(data.user, data.staff)
+        } else {
+          setAuth(null, null)
+        }
+      })
+      .catch(() => {
+        setAuth(null, null)
+      })
+      .finally(() => {
         setLoading(false)
-      }
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session) {
-        fetchStaff(session.user.id)
-      } else {
-        setCurrentStaff(null)
-        setLoading(false)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [setSession, setCurrentStaff, setLoading])
-
-  async function fetchStaff(userId: string) {
-    const { data, error } = await supabase
-      .from('staff')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-
-    if (error) {
-      setCurrentStaff(null)
-    } else {
-      setCurrentStaff(data)
-    }
-    setLoading(false)
-  }
+      })
+  }, [setAuth, setLoading])
 }
 
 export function useSignIn() {
+  const { setAuth } = useAuthStore()
+
   return async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    const data = await api<{ user: { id: string; email: string | undefined }; staff: Staff }>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      },
+    )
+    setAuth(data.user, data.staff)
   }
 }
 
 export function useSignOut() {
   const { clear } = useAuthStore()
+
   return async () => {
-    await supabase.auth.signOut()
+    await api('/api/auth/logout', { method: 'POST' })
     clear()
   }
 }

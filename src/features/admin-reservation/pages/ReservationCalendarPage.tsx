@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useStoreContext } from '@/hooks/useStoreContext'
 import { TIMEZONE } from '@/lib/constants'
 import { cn, formatTimeJP } from '@/lib/utils'
@@ -43,18 +43,8 @@ export default function ReservationCalendarPage() {
   // Fetch stylists
   const { data: staffList = [] } = useQuery<Staff[]>({
     queryKey: ['staff', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) return []
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('store_id', activeStoreId)
-        .eq('is_active', true)
-        .in('role', ['stylist', 'store_manager'])
-        .order('sort_order')
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () =>
+      api<Staff[]>(`/api/admin/staff?storeId=${activeStoreId}&roles=stylist,store_manager`),
     enabled: !!activeStoreId,
   })
 

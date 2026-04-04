@@ -4,9 +4,11 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
-      - key: VITE_SUPABASE_URL
+      - key: SUPABASE_URL
         sync: false
-      - key: VITE_SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: VITE_APP_URL
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: APP_URL
         sync: false

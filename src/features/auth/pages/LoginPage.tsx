@@ -5,9 +5,9 @@ import { APP_NAME } from '@/lib/constants'
 import { LoginForm } from '../components/LoginForm'
 
 export default function LoginPage() {
-  const { session, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading } = useAuthStore()
 
-  if (!isLoading && session) {
+  if (!isLoading && isAuthenticated) {
     return <Navigate to="/admin" replace />
   }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
 import { Modal, Button, Select } from '@/components/ui'
 import { STATUS_LABELS } from '@/lib/constants'
@@ -31,15 +31,10 @@ export function ReservationDetailModal({
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ReservationStatus }) => {
-      const updateData: Record<string, unknown> = { status }
-      if (status === 'cancelled') {
-        updateData.cancelled_at = new Date().toISOString()
-      }
-      const { error } = await supabase
-        .from('reservations')
-        .update(updateData as never)
-        .eq('id', id)
-      if (error) throw error
+      await api(`/api/admin/reservations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      })
     },
     onSuccess: () => {
       toast.success('ステータスを更新しました')

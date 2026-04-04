@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useStoreContext } from '@/hooks/useStoreContext'
 import { Card, CardHeader, CardContent, Spinner } from '@/components/ui'
 import { formatDateJP } from '@/lib/utils'
@@ -11,78 +11,23 @@ function getToday(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: TIMEZONE })
 }
 
-function getWeekEnd(): string {
-  const today = new Date()
-  const end = new Date(today)
-  end.setDate(today.getDate() + (7 - today.getDay()))
-  return end.toLocaleDateString('sv-SE', { timeZone: TIMEZONE })
+interface DashboardStats {
+  todayReservations: ReservationWithDetails[]
+  weekCount: number
+  customerCount: number
 }
 
 export default function DashboardPage() {
   const { activeStoreId } = useStoreContext()
   const today = getToday()
-  const weekEnd = getWeekEnd()
 
-  // Today's reservations
-  const { data: todayReservations = [], isLoading: loadingToday } = useQuery<
-    ReservationWithDetails[]
-  >({
-    queryKey: ['reservations', 'today', activeStoreId, today],
-    queryFn: async () => {
-      if (!activeStoreId) return []
-      const { data, error } = await supabase
-        .from('reservations')
-        .select(
-          `
-          *,
-          staff:staff_id (display_name, photo_url),
-          menu:menu_id (name, price, duration_min, category),
-          customer:customer_id (name, phone, email)
-        `,
-        )
-        .eq('store_id', activeStoreId)
-        .gte('start_at', `${today}T00:00:00`)
-        .lte('start_at', `${today}T23:59:59`)
-        .order('start_at', { ascending: true })
-      if (error) throw error
-      return (data as unknown as ReservationWithDetails[]) ?? []
-    },
+  const { data, isLoading } = useQuery<DashboardStats>({
+    queryKey: ['dashboard-stats', activeStoreId, today],
+    queryFn: () => api<DashboardStats>('/api/admin/dashboard/stats'),
     enabled: !!activeStoreId,
   })
 
-  // This week's reservation count
-  const { data: weekCount = 0 } = useQuery<number>({
-    queryKey: ['reservations', 'week-count', activeStoreId, today, weekEnd],
-    queryFn: async () => {
-      if (!activeStoreId) return 0
-      const { count, error } = await supabase
-        .from('reservations')
-        .select('*', { count: 'exact', head: true })
-        .eq('store_id', activeStoreId)
-        .gte('start_at', `${today}T00:00:00`)
-        .lte('start_at', `${weekEnd}T23:59:59`)
-      if (error) throw error
-      return count ?? 0
-    },
-    enabled: !!activeStoreId,
-  })
-
-  // Total customer count
-  const { data: customerCount = 0 } = useQuery<number>({
-    queryKey: ['customers', 'count', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) return 0
-      // customers are scoped by company_id; get company_id from any store reservation
-      const { count, error } = await supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true })
-      if (error) throw error
-      return count ?? 0
-    },
-    enabled: !!activeStoreId,
-  })
-
-  if (loadingToday) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Spinner className="h-8 w-8" />
@@ -90,6 +35,9 @@ export default function DashboardPage() {
     )
   }
 
+  const todayReservations = data?.todayReservations ?? []
+  const weekCount = data?.weekCount ?? 0
+  const customerCount = data?.customerCount ?? 0
   const confirmedToday = todayReservations.filter((r) => r.status === 'confirmed').length
 
   return (

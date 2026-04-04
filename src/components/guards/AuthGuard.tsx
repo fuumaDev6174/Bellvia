@@ -9,7 +9,7 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, roles }: AuthGuardProps) {
-  const { session, currentStaff, isLoading } = useAuthStore()
+  const { isAuthenticated, currentStaff, isLoading } = useAuthStore()
 
   if (isLoading) {
     return (
@@ -19,7 +19,7 @@ export function AuthGuard({ children, roles }: AuthGuardProps) {
     )
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return <Navigate to="/admin/login" replace />
   }
 

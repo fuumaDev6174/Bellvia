@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
 import { Modal, Button, Input, Select } from '@/components/ui'
 import { useStoreContext } from '@/hooks/useStoreContext'
-import { useCurrentStaff } from '@/hooks/useCurrentStaff'
-import type { Staff, Menu, ReservationInsert } from '@/types/models'
+import type { Staff, Menu } from '@/types/models'
 
 interface CreateReservationModalProps {
   isOpen: boolean
@@ -15,7 +14,6 @@ interface CreateReservationModalProps {
 
 export function CreateReservationModal({ isOpen, onClose }: CreateReservationModalProps) {
   const { activeStoreId } = useStoreContext()
-  const { companyId } = useCurrentStaff()
 
   const [guestName, setGuestName] = useState('')
   const [guestPhone, setGuestPhone] = useState('')
@@ -28,64 +26,42 @@ export function CreateReservationModal({ isOpen, onClose }: CreateReservationMod
 
   const { data: staffList = [] } = useQuery<Staff[]>({
     queryKey: ['staff', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) return []
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('store_id', activeStoreId)
-        .eq('is_active', true)
-        .order('sort_order')
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () =>
+      api<Staff[]>(`/api/admin/staff?storeId=${activeStoreId}&roles=stylist,store_manager`),
     enabled: !!activeStoreId,
   })
 
   const { data: menuList = [] } = useQuery<Menu[]>({
     queryKey: ['menus', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) return []
-      const { data, error } = await supabase
-        .from('menus')
-        .select('*')
-        .eq('store_id', activeStoreId)
-        .eq('is_public', true)
-        .order('sort_order')
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () => api<Menu[]>(`/api/admin/menus?storeId=${activeStoreId}`),
     enabled: !!activeStoreId,
   })
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!activeStoreId || !companyId) throw new Error('店舗情報が見つかりません')
+      if (!activeStoreId) throw new Error('店舗情報が見つかりません')
 
       const selectedMenu = menuList.find((m) => m.id === menuId)
       if (!selectedMenu) throw new Error('メニューを選択してください')
 
       const startAt = `${date}T${time}:00`
-      const endMinutes = selectedMenu.duration_min
       const startDate = new Date(startAt)
-      const endDate = new Date(startDate.getTime() + endMinutes * 60 * 1000)
+      const endDate = new Date(startDate.getTime() + selectedMenu.duration_min * 60 * 1000)
 
-      const reservation: ReservationInsert = {
-        store_id: activeStoreId,
-        company_id: companyId,
-        staff_id: staffId,
-        menu_id: menuId,
-        start_at: startAt,
-        end_at: endDate.toISOString(),
-        status: 'confirmed',
-        source,
-        guest_name: guestName,
-        guest_phone: guestPhone || null,
-        notes: notes || null,
-      }
-
-      const { error } = await supabase.from('reservations').insert(reservation as never)
-      if (error) throw error
+      await api('/api/admin/reservations', {
+        method: 'POST',
+        body: JSON.stringify({
+          storeId: activeStoreId,
+          staffId,
+          menuId,
+          startAt,
+          endAt: endDate.toISOString(),
+          source,
+          guestName,
+          guestPhone: guestPhone || undefined,
+          notes: notes || undefined,
+        }),
+      })
     },
     onSuccess: () => {
       toast.success('予約を作成しました')
@@ -155,12 +131,10 @@ export function CreateReservationModal({ isOpen, onClose }: CreateReservationMod
           value={staffId}
           onChange={(e) => setStaffId(e.target.value)}
           placeholder="スタイリストを選択"
-          options={staffList
-            .filter((s) => s.role === 'stylist' || s.role === 'store_manager')
-            .map((s) => ({
-              value: s.id,
-              label: s.display_name,
-            }))}
+          options={staffList.map((s) => ({
+            value: s.id,
+            label: s.display_name,
+          }))}
         />
 
         <div className="grid grid-cols-2 gap-4">

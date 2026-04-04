@@ -1,45 +1,43 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
 import { useStoreContext } from '@/hooks/useStoreContext'
-import { useCurrentStaff } from '@/hooks/useCurrentStaff'
-import type { Menu, MenuInsert, MenuUpdate } from '@/types/models'
+import type { Menu, MenuUpdate } from '@/types/models'
 
 export function useMenus() {
   const { activeStoreId } = useStoreContext()
 
   return useQuery<Menu[]>({
     queryKey: ['admin-menus', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) throw new Error('店舗が選択されていません')
-      const { data, error } = await supabase
-        .from('menus')
-        .select('*')
-        .eq('store_id', activeStoreId)
-        .order('sort_order')
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api<Menu[]>(`/api/admin/menus?storeId=${activeStoreId}`),
     enabled: !!activeStoreId,
   })
 }
 
 export function useCreateMenu() {
   const { activeStoreId } = useStoreContext()
-  const { companyId } = useCurrentStaff()
 
   return useMutation({
-    mutationFn: async (input: Omit<MenuInsert, 'store_id' | 'company_id'>) => {
-      if (!activeStoreId || !companyId) throw new Error('店舗情報が取得できません')
-      const { data, error } = await supabase
-        .from('menus')
-        .insert({ ...input, store_id: activeStoreId, company_id: companyId } as never)
-        .select()
-        .single()
-      if (error) throw error
-      return data
-    },
+    mutationFn: async (input: {
+      name: string
+      category?: string | null
+      description?: string | null
+      price: number
+      duration_min: number
+      is_public?: boolean
+    }) =>
+      api<Menu>('/api/admin/menus', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: input.name,
+          category: input.category,
+          description: input.description,
+          price: input.price,
+          durationMin: input.duration_min,
+          isPublic: input.is_public,
+        }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-menus', activeStoreId] })
       toast.success('メニューを作成しました')
@@ -54,16 +52,19 @@ export function useUpdateMenu() {
   const { activeStoreId } = useStoreContext()
 
   return useMutation({
-    mutationFn: async ({ id, ...input }: MenuUpdate & { id: string }) => {
-      const { data, error } = await supabase
-        .from('menus')
-        .update(input as never)
-        .eq('id', id)
-        .select()
-        .single()
-      if (error) throw error
-      return data
-    },
+    mutationFn: async ({ id, ...input }: MenuUpdate & { id: string }) =>
+      api<Menu>(`/api/admin/menus/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: input.name,
+          category: input.category,
+          description: input.description,
+          price: input.price,
+          durationMin: input.duration_min,
+          isPublic: input.is_public,
+          sortOrder: input.sort_order,
+        }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-menus', activeStoreId] })
       toast.success('メニューを更新しました')
@@ -78,10 +79,8 @@ export function useDeleteMenu() {
   const { activeStoreId } = useStoreContext()
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('menus').delete().eq('id', id)
-      if (error) throw error
-    },
+    mutationFn: async (id: string) =>
+      api(`/api/admin/menus/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-menus', activeStoreId] })
       toast.success('メニューを削除しました')

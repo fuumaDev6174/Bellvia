@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useStoreContext } from '@/hooks/useStoreContext'
 import { TIMEZONE } from '@/lib/constants'
 import { Card, Button, Input, Select, Spinner } from '@/components/ui'
@@ -32,17 +32,7 @@ export default function ReservationListPage() {
   // Fetch staff for filter dropdown
   const { data: staffList = [] } = useQuery<Staff[]>({
     queryKey: ['staff', activeStoreId],
-    queryFn: async () => {
-      if (!activeStoreId) return []
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('store_id', activeStoreId)
-        .eq('is_active', true)
-        .order('sort_order')
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () => api<Staff[]>(`/api/admin/staff?storeId=${activeStoreId}`),
     enabled: !!activeStoreId,
   })
 

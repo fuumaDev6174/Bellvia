@@ -1,30 +1,31 @@
-# ---- Build Stage ----
-FROM node:22-alpine AS build
-
+# Stage 1: Build frontend
+FROM node:22-alpine AS client-build
 WORKDIR /app
-
-# Install dependencies first (layer cache)
 COPY package.json package-lock.json ./
+COPY server/package.json ./server/
 RUN npm ci
-
-# Copy source and build
 COPY . .
-
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_APP_URL
-
 RUN npm run build
 
-# ---- Production Stage ----
-FROM nginx:alpine AS production
+# Stage 2: Build server
+FROM node:22-alpine AS server-build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY server/package.json ./server/
+RUN npm ci
+COPY server/ ./server/
+COPY src/types/ ./src/types/
+RUN npm run build:server
 
-# Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built assets
-COPY --from=build /app/dist /usr/share/nginx/html
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+# Stage 3: Production runtime
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY server/package.json ./server/
+RUN npm ci --omit=dev
+COPY --from=client-build /app/dist ./dist
+COPY --from=server-build /app/server/dist ./server/dist
+EXPOSE 3000
+ENV NODE_ENV=production
+ENV PORT=3000
+CMD ["node", "server/dist/index.js"]

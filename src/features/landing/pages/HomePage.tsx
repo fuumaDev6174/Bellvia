@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { SEOHead } from '@/components/layout/SEOHead'
 import { Card, CardContent, Spinner } from '@/components/ui'
 import { MapPin, Scissors } from 'lucide-react'
@@ -10,15 +10,7 @@ import type { Store } from '@/types/models'
 export default function HomePage() {
   const { data: stores, isLoading } = useQuery<Store[]>({
     queryKey: ['public-stores'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('stores')
-        .select('*')
-        .eq('is_active', true)
-        .order('name')
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api<Store[]>('/api/public/stores'),
   })
 
   return (
