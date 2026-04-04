@@ -59,7 +59,7 @@ export default function App() {
         {/* Auth */}
         <Route path="/admin/login" element={<LoginPage />} />
 
-        {/* Admin routes */}
+        {/* Admin routes — all authenticated staff */}
         <Route
           element={
             <AuthGuard>
@@ -67,17 +67,30 @@ export default function App() {
             </AuthGuard>
           }
         >
+          {/* All roles: dashboard */}
           <Route path="/admin" element={<DashboardPage />} />
-          <Route path="/admin/reservations" element={<ReservationListPage />} />
-          <Route path="/admin/reservations/calendar" element={<ReservationCalendarPage />} />
-          <Route path="/admin/menus" element={<MenuManagePage />} />
-          <Route path="/admin/staff" element={<StaffManagePage />} />
-          <Route path="/admin/customers" element={<CustomerListPage />} />
-          <Route path="/admin/stores" element={<StoreManagePage />} />
-          <Route path="/admin/stores/:storeId" element={<StoreDetailPage />} />
-          <Route path="/admin/sales" element={<SalesPage />} />
-          <Route path="/admin/inventory" element={<InventoryPage />} />
-          <Route path="/admin/business-types" element={<BusinessTypeManagePage />} />
+
+          {/* company_admin + store_manager */}
+          <Route
+            element={<AuthGuard roles={['company_admin', 'store_manager']} />}
+          >
+            <Route path="/admin/reservations" element={<ReservationListPage />} />
+            <Route path="/admin/reservations/calendar" element={<ReservationCalendarPage />} />
+            <Route path="/admin/menus" element={<MenuManagePage />} />
+            <Route path="/admin/staff" element={<StaffManagePage />} />
+            <Route path="/admin/customers" element={<CustomerListPage />} />
+            <Route path="/admin/sales" element={<SalesPage />} />
+            <Route path="/admin/inventory" element={<InventoryPage />} />
+          </Route>
+
+          {/* company_admin only */}
+          <Route
+            element={<AuthGuard roles={['company_admin']} />}
+          >
+            <Route path="/admin/stores" element={<StoreManagePage />} />
+            <Route path="/admin/stores/:storeId" element={<StoreDetailPage />} />
+            <Route path="/admin/business-types" element={<BusinessTypeManagePage />} />
+          </Route>
         </Route>
       </Routes>
     </Suspense>

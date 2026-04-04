@@ -22,23 +22,33 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { APP_NAME, ROLE_LABELS } from '@/lib/constants'
 import type { Store } from '@/types/models'
+import type { StaffRole } from '@/types/models'
+import type { LucideIcon } from 'lucide-react'
 
-const navItems = [
+interface NavItem {
+  to: string
+  icon: LucideIcon
+  label: string
+  exact?: boolean
+  roles?: StaffRole[] // undefined = all roles can see
+}
+
+const navItems: NavItem[] = [
   { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
-  { to: '/admin/reservations', icon: CalendarDays, label: '予約管理' },
-  { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理' },
-  { to: '/admin/staff', icon: Users, label: 'スタッフ管理' },
-  { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
-  { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
-  { to: '/admin/inventory', icon: Package, label: '在庫管理' },
-  { to: '/admin/stores', icon: StoreIcon, label: '店舗管理' },
-  { to: '/admin/business-types', icon: Tags, label: '業種管理' },
+  { to: '/admin/reservations', icon: CalendarDays, label: '予約管理', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/staff', icon: Users, label: 'スタッフ管理', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/customers', icon: UserCircle, label: '顧客一覧', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/sales', icon: JapaneseYen, label: '売上管理', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/inventory', icon: Package, label: '在庫管理', roles: ['company_admin', 'store_manager'] },
+  { to: '/admin/stores', icon: StoreIcon, label: '店舗管理', roles: ['company_admin'] },
+  { to: '/admin/business-types', icon: Tags, label: '業種管理', roles: ['company_admin'] },
 ]
 
 export function AdminLayout() {
   const location = useLocation()
   const signOut = useSignOut()
-  const { staff } = useCurrentStaff()
+  const { staff, role } = useCurrentStaff()
   const { activeStoreId, setSelectedStoreId, canSwitchStore } = useStoreContext()
   const { sidebarOpen, toggleSidebar } = useUIStore()
 
@@ -47,6 +57,11 @@ export function AdminLayout() {
     queryFn: () => api<Store[]>('/api/admin/stores'),
     enabled: canSwitchStore,
   })
+
+  // Filter nav items by role
+  const visibleNav = navItems.filter(
+    (item) => !item.roles || (role && item.roles.includes(role)),
+  )
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -63,7 +78,7 @@ export function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {navItems.map((item) => {
+          {visibleNav.map((item) => {
             const isActive = item.exact
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to)

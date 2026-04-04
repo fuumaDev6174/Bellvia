@@ -1,10 +1,10 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Spinner } from '@/components/ui'
 import type { StaffRole } from '@/types/models'
 
 interface AuthGuardProps {
-  children: React.ReactNode
+  children?: React.ReactNode
   roles?: StaffRole[]
 }
 
@@ -39,5 +39,6 @@ export function AuthGuard({ children, roles }: AuthGuardProps) {
     )
   }
 
-  return <>{children}</>
+  // Support both wrapping children and nested <Route> (Outlet)
+  return children ? <>{children}</> : <Outlet />
 }
