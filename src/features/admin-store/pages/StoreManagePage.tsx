@@ -2,10 +2,20 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
-import { Card, CardContent, Badge } from '@/components/ui'
+import { Card, CardContent, Badge, Select } from '@/components/ui'
 import { Spinner } from '@/components/ui/Spinner'
 import { MapPin, Phone, Clock, ExternalLink } from 'lucide-react'
 import type { Store, BusinessHours, BusinessHourEntry } from '@/types/models'
+
+interface BusinessType {
+  id: string
+  name: string
+  color: string
+}
+
+interface StoreWithType extends Store {
+  business_type?: BusinessType | null
+}
 
 const DAY_LABELS: Record<string, string> = {
   mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日',
@@ -23,9 +33,14 @@ function formatBusinessHours(hours: BusinessHours | null | undefined): string {
 }
 
 export default function StoreManagePage() {
-  const { data: stores, isLoading } = useQuery<Store[]>({
+  const { data: stores, isLoading } = useQuery<StoreWithType[]>({
     queryKey: ['admin-stores'],
-    queryFn: () => api<Store[]>('/api/admin/stores'),
+    queryFn: () => api<StoreWithType[]>('/api/admin/stores'),
+  })
+
+  const { data: businessTypes } = useQuery<BusinessType[]>({
+    queryKey: ['business-types'],
+    queryFn: () => api<BusinessType[]>('/api/admin/business-types'),
   })
 
   const toggleActiveMutation = useMutation({
@@ -39,9 +54,21 @@ export default function StoreManagePage() {
       queryClient.invalidateQueries({ queryKey: ['admin-stores'] })
       toast.success('店舗の状態を更新しました')
     },
-    onError: () => {
-      toast.error('更新に失敗しました')
+    onError: () => toast.error('更新に失敗しました'),
+  })
+
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, businessTypeId }: { id: string; businessTypeId: string | null }) => {
+      await api(`/api/admin/stores/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ businessTypeId }),
+      })
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-stores'] })
+      toast.success('業種を更新しました')
+    },
+    onError: () => toast.error('更新に失敗しました'),
   })
 
   if (isLoading) {
@@ -68,15 +95,25 @@ export default function StoreManagePage() {
                   <h2 className="text-lg font-semibold text-gray-900">{store.name}</h2>
                   <p className="text-sm text-gray-500">/{store.slug}</p>
                 </div>
-                <Badge
-                  className={
-                    store.is_active
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-500'
-                  }
-                >
-                  {store.is_active ? '公開中' : '非公開'}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {store.business_type && (
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                      style={{ backgroundColor: store.business_type.color }}
+                    >
+                      {store.business_type.name}
+                    </span>
+                  )}
+                  <Badge
+                    className={
+                      store.is_active
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-gray-100 text-gray-500'
+                    }
+                  >
+                    {store.is_active ? '公開中' : '非公開'}
+                  </Badge>
+                </div>
               </div>
 
               {store.address && (
@@ -103,6 +140,25 @@ export default function StoreManagePage() {
                   {formatBusinessHours(store.business_hours as BusinessHours)}
                 </span>
               </div>
+
+              {/* Business type selector */}
+              {businessTypes && (
+                <Select
+                  label="業種"
+                  value={store.business_type_id ?? ''}
+                  onChange={(e) =>
+                    updateTypeMutation.mutate({
+                      id: store.id,
+                      businessTypeId: e.target.value || null,
+                    })
+                  }
+                  placeholder="未設定"
+                  options={businessTypes.map((bt) => ({
+                    value: bt.id,
+                    label: bt.name,
+                  }))}
+                />
+              )}
 
               <div className="flex items-center gap-3 border-t pt-3">
                 <button

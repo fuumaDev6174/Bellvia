@@ -7,6 +7,83 @@ const admin = new Hono()
 // All admin routes require authentication
 admin.use('*', authMiddleware)
 
+// ---------- Business Types ----------
+
+// GET /api/admin/business-types
+admin.get('/business-types', async (c) => {
+  const staff = c.get('staff')
+
+  const { data, error } = await supabaseAdmin
+    .from('business_types')
+    .select('*')
+    .eq('company_id', staff.companyId)
+    .order('sort_order')
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// POST /api/admin/business-types
+admin.post('/business-types', async (c) => {
+  const staff = c.get('staff')
+  const body = await c.req.json<{ name: string; color?: string; sortOrder?: number }>()
+
+  const { data, error } = await supabaseAdmin
+    .from('business_types')
+    .insert({
+      company_id: staff.companyId,
+      name: body.name,
+      color: body.color ?? '#6366f1',
+      sort_order: body.sortOrder ?? 0,
+    })
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data }, 201)
+})
+
+// PATCH /api/admin/business-types/:id
+admin.patch('/business-types/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ name?: string; color?: string; sortOrder?: number; isActive?: boolean }>()
+
+  const updateData: Record<string, unknown> = {}
+  if (body.name !== undefined) updateData.name = body.name
+  if (body.color !== undefined) updateData.color = body.color
+  if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder
+  if (body.isActive !== undefined) updateData.is_active = body.isActive
+
+  const { data, error } = await supabaseAdmin
+    .from('business_types')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
+// DELETE /api/admin/business-types/:id
+admin.delete('/business-types/:id', async (c) => {
+  const id = c.req.param('id')
+
+  // Unlink stores first
+  await supabaseAdmin
+    .from('stores')
+    .update({ business_type_id: null })
+    .eq('business_type_id', id)
+
+  const { error } = await supabaseAdmin
+    .from('business_types')
+    .delete()
+    .eq('id', id)
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: { message: 'Deleted' } })
+})
+
 // ---------- Stores ----------
 
 // GET /api/admin/stores
@@ -15,7 +92,7 @@ admin.get('/stores', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('stores')
-    .select('*')
+    .select('*, business_type:business_type_id (id, name, color)')
     .eq('company_id', staff.companyId)
     .order('name')
 
@@ -33,6 +110,7 @@ admin.patch('/stores/:id', async (c) => {
     phone?: string
     description?: string
     businessHours?: unknown
+    businessTypeId?: string | null
     isActive?: boolean
   }>()
 
@@ -43,6 +121,7 @@ admin.patch('/stores/:id', async (c) => {
   if (body.phone !== undefined) updateData.phone = body.phone
   if (body.description !== undefined) updateData.description = body.description
   if (body.businessHours !== undefined) updateData.business_hours = body.businessHours
+  if (body.businessTypeId !== undefined) updateData.business_type_id = body.businessTypeId
   if (body.isActive !== undefined) updateData.is_active = body.isActive
 
   const { data, error } = await supabaseAdmin

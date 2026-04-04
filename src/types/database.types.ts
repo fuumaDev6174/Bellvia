@@ -48,6 +48,7 @@ export interface Database {
           business_hours: Json
           description: string | null
           image_url: string | null
+          business_type_id: string | null
           is_active: boolean
           created_at: string
           updated_at: string
@@ -62,6 +63,7 @@ export interface Database {
           business_hours?: Json
           description?: string | null
           image_url?: string | null
+          business_type_id?: string | null
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -76,6 +78,7 @@ export interface Database {
           business_hours?: Json
           description?: string | null
           image_url?: string | null
+          business_type_id?: string | null
           is_active?: boolean
           updated_at?: string
         }

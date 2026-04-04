@@ -8,6 +8,7 @@ import {
   Store as StoreIcon,
   JapaneseYen,
   Package,
+  Tags,
   LogOut,
   Menu as MenuIcon,
   Scissors,
@@ -31,6 +32,7 @@ const navItems = [
   { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
   { to: '/admin/inventory', icon: Package, label: '在庫管理' },
   { to: '/admin/stores', icon: StoreIcon, label: '店舗管理' },
+  { to: '/admin/business-types', icon: Tags, label: '業種管理' },
 ]
 
 export function AdminLayout() {
