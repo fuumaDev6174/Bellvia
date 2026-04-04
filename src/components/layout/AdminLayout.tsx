@@ -15,6 +15,10 @@ import {
   Scissors,
   Eye,
   Search,
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  Boxes,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useSignOut } from '@/hooks/useAuth'
@@ -35,19 +39,47 @@ interface NavItem {
   label: string
   exact?: boolean
   roles?: StaffRole[]
+  children?: NavItem[]
 }
 
-const navItems: NavItem[] = [
+// company_admin nav: store management is a parent with children
+const adminNav: NavItem[] = [
   { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
-  { to: '/admin/reservations', icon: CalendarDays, label: '予約管理', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/staff', icon: Users, label: 'スタッフ管理', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/customers', icon: UserCircle, label: '顧客一覧', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/sales', icon: JapaneseYen, label: '売上管理', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/inventory', icon: Package, label: '在庫管理', roles: ['company_admin', 'store_manager'] },
-  { to: '/admin/stores', icon: StoreIcon, label: '店舗管理', roles: ['company_admin'] },
-  { to: '/admin/business-types', icon: Tags, label: '業種管理', roles: ['company_admin'] },
+  {
+    to: '/admin/stores',
+    icon: StoreIcon,
+    label: '店舗管理',
+    children: [
+      { to: '/admin/reservations', icon: CalendarDays, label: '予約管理' },
+      { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理' },
+      { to: '/admin/staff', icon: Users, label: 'スタッフ管理' },
+      { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
+      { to: '/admin/inventory', icon: Package, label: '在庫管理' },
+    ],
+  },
+  { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
+  { to: '/admin/sales-overview', icon: BarChart3, label: '売上総括' },
+  { to: '/admin/inventory-overview', icon: Boxes, label: '在庫総括' },
+  { to: '/admin/business-types', icon: Tags, label: '業種管理' },
 ]
+
+// store_manager nav: flat, no store/business-type management
+const managerNav: NavItem[] = [
+  { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
+  { to: '/admin/reservations', icon: CalendarDays, label: '予約管理' },
+  { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理' },
+  { to: '/admin/staff', icon: Users, label: 'スタッフ管理' },
+  { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
+  { to: '/admin/inventory', icon: Package, label: '在庫管理' },
+  { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
+]
+
+// stylist nav: dashboard only
+const stylistNav: NavItem[] = [
+  { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
+]
+
+const CHILD_PATHS = ['/admin/reservations', '/admin/menus', '/admin/staff', '/admin/sales', '/admin/inventory']
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'store_manager', label: '店長として表示' },
@@ -63,9 +95,13 @@ export function AdminLayout() {
   const { sidebarOpen, toggleSidebar, roleOverride, overrideStoreId, clearOverride } = useUIStore()
   const setRoleOverride = useUIStore((s) => s.setRoleOverride)
 
-  // Store picker modal state
   const [pickingRole, setPickingRole] = useState<StaffRole | null>(null)
   const [storeSearch, setStoreSearch] = useState('')
+
+  // Store management expanded state
+  const isStoreExpanded =
+    location.pathname.startsWith('/admin/stores') ||
+    CHILD_PATHS.some((p) => location.pathname.startsWith(p))
 
   const { data: stores } = useQuery<Store[]>({
     queryKey: ['admin-stores'],
@@ -73,10 +109,10 @@ export function AdminLayout() {
     enabled: actualRole === 'company_admin',
   })
 
-  // Filter nav items by effective role
-  const visibleNav = navItems.filter(
-    (item) => !item.roles || (role && item.roles.includes(role)),
-  )
+  // Pick nav by role
+  const navItems = role === 'company_admin' ? adminNav
+    : role === 'store_manager' ? managerNav
+    : stylistNav
 
   const handleRoleSelect = (selectedRole: StaffRole) => {
     setPickingRole(selectedRole)
@@ -102,7 +138,8 @@ export function AdminLayout() {
     return s.name.toLowerCase().includes(q) || (s.address ?? '').toLowerCase().includes(q)
   })
 
-  const overrideStoreName = stores?.find(s => s.id === overrideStoreId)?.name
+  const overrideStoreName = stores?.find((s) => s.id === overrideStoreId)?.name
+  const activeStoreName = stores?.find((s) => s.id === activeStoreId)?.name
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -111,13 +148,9 @@ export function AdminLayout() {
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
           <Eye className="h-4 w-4" />
           <span>
-            {overrideStoreName && <span className="font-bold">{overrideStoreName}</span>}
-            {' '}の{ROLE_LABELS[roleOverride ?? ''] ?? roleOverride}ビューでプレビュー中
+            <span className="font-bold">{overrideStoreName}</span> の{ROLE_LABELS[roleOverride ?? ''] ?? roleOverride}ビューでプレビュー中
           </span>
-          <button
-            onClick={handleClearOverride}
-            className="rounded bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
-          >
+          <button onClick={handleClearOverride} className="rounded bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700">
             解除
           </button>
         </div>
@@ -137,10 +170,67 @@ export function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {visibleNav.map((item) => {
+          {navItems.map((item) => {
+            const hasChildren = item.children && item.children.length > 0
             const isActive = item.exact
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to)
+
+            if (hasChildren) {
+              return (
+                <div key={item.to}>
+                  {/* Parent: 店舗管理 */}
+                  <Link
+                    to={item.to}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      isStoreExpanded
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                    )}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span className="flex-1">{item.label}</span>
+                    {isStoreExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Link>
+
+                  {/* Children */}
+                  {isStoreExpanded && (
+                    <div className="ml-4 mt-1 space-y-0.5 border-l pl-3">
+                      {/* Show active store name */}
+                      {activeStoreName && (
+                        <p className="px-2 py-1 text-xs font-medium text-primary-600 truncate">
+                          {activeStoreName}
+                        </p>
+                      )}
+                      {item.children!.map((child) => {
+                        const childActive = location.pathname.startsWith(child.to)
+                        return (
+                          <Link
+                            key={child.to}
+                            to={child.to}
+                            className={cn(
+                              'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors',
+                              childActive
+                                ? 'bg-primary-50 font-medium text-primary-700'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900',
+                            )}
+                          >
+                            <child.icon className="h-4 w-4" />
+                            {child.label}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
             return (
               <Link
                 key={item.to}
@@ -181,14 +271,10 @@ export function AdminLayout() {
           className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3 lg:px-6"
           style={isOverriding ? { top: '36px' } : undefined}
         >
-          <button
-            onClick={toggleSidebar}
-            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 lg:hidden"
-          >
+          <button onClick={toggleSidebar} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 lg:hidden">
             <MenuIcon className="h-5 w-5" />
           </button>
 
-          {/* Store selector (admin, not overriding) */}
           {canSwitchStore && !isOverriding && stores && (
             <select
               value={activeStoreId ?? ''}
@@ -203,7 +289,6 @@ export function AdminLayout() {
 
           <div className="flex-1" />
 
-          {/* Role switcher buttons (company_admin only, not already overriding) */}
           {actualRole === 'company_admin' && !isOverriding && (
             <div className="flex gap-2">
               {ROLE_OPTIONS.map((opt) => (
@@ -241,7 +326,6 @@ export function AdminLayout() {
         size="lg"
       >
         <div className="space-y-4">
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -253,8 +337,6 @@ export function AdminLayout() {
               autoFocus
             />
           </div>
-
-          {/* Store list */}
           <div className="max-h-80 overflow-y-auto divide-y rounded-lg border">
             {filteredStores.map((store) => (
               <button
@@ -264,20 +346,15 @@ export function AdminLayout() {
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">{store.name}</p>
-                  {store.address && (
-                    <p className="text-xs text-gray-500">{store.address}</p>
-                  )}
+                  {store.address && <p className="text-xs text-gray-500">{store.address}</p>}
                 </div>
-                <span
-                  className={`h-2 w-2 rounded-full ${store.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
-                />
+                <span className={`h-2 w-2 rounded-full ${store.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
               </button>
             ))}
             {filteredStores.length === 0 && (
               <p className="px-4 py-8 text-center text-sm text-gray-400">該当する店舗がありません</p>
             )}
           </div>
-
           <div className="flex justify-end">
             <Button variant="outline" onClick={() => setPickingRole(null)}>キャンセル</Button>
           </div>

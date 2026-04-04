@@ -31,6 +31,8 @@ const StoreDetailPage = lazy(() => import('@/features/admin-store/pages/StoreDet
 const SalesPage = lazy(() => import('@/features/admin-sales/pages/SalesPage'))
 const InventoryPage = lazy(() => import('@/features/admin-inventory/pages/InventoryPage'))
 const BusinessTypeManagePage = lazy(() => import('@/features/admin-business-type/pages/BusinessTypeManagePage'))
+const SalesOverviewPage = lazy(() => import('@/features/admin-sales/pages/SalesOverviewPage'))
+const InventoryOverviewPage = lazy(() => import('@/features/admin-inventory/pages/InventoryOverviewPage'))
 
 function Loading() {
   return (
@@ -90,6 +92,8 @@ export default function App() {
             <Route path="/admin/stores" element={<StoreManagePage />} />
             <Route path="/admin/stores/:storeId" element={<StoreDetailPage />} />
             <Route path="/admin/business-types" element={<BusinessTypeManagePage />} />
+            <Route path="/admin/sales-overview" element={<SalesOverviewPage />} />
+            <Route path="/admin/inventory-overview" element={<InventoryOverviewPage />} />
           </Route>
         </Route>
       </Routes>
