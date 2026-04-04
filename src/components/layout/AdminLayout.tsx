@@ -5,18 +5,22 @@ import {
   UtensilsCrossed,
   Users,
   UserCircle,
-  Store,
+  Store as StoreIcon,
   JapaneseYen,
   Package,
   LogOut,
   Menu as MenuIcon,
   Scissors,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useSignOut } from '@/hooks/useAuth'
 import { useCurrentStaff } from '@/hooks/useCurrentStaff'
+import { useStoreContext } from '@/hooks/useStoreContext'
 import { useUIStore } from '@/stores/uiStore'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { APP_NAME, ROLE_LABELS } from '@/lib/constants'
+import type { Store } from '@/types/models'
 
 const navItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
@@ -26,14 +30,21 @@ const navItems = [
   { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
   { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
   { to: '/admin/inventory', icon: Package, label: '在庫管理' },
-  { to: '/admin/stores', icon: Store, label: '店舗管理' },
+  { to: '/admin/stores', icon: StoreIcon, label: '店舗管理' },
 ]
 
 export function AdminLayout() {
   const location = useLocation()
   const signOut = useSignOut()
   const { staff } = useCurrentStaff()
+  const { activeStoreId, setSelectedStoreId, canSwitchStore } = useStoreContext()
   const { sidebarOpen, toggleSidebar } = useUIStore()
+
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: ['admin-stores'],
+    queryFn: () => api<Store[]>('/api/admin/stores'),
+    enabled: canSwitchStore,
+  })
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -94,6 +105,19 @@ export function AdminLayout() {
           >
             <MenuIcon className="h-5 w-5" />
           </button>
+          {canSwitchStore && stores && (
+            <select
+              value={activeStoreId ?? ''}
+              onChange={(e) => setSelectedStoreId?.(e.target.value || null)}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex-1" />
           <button
             onClick={signOut}
