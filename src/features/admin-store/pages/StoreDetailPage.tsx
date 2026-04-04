@@ -118,32 +118,66 @@ export default function StoreDetailPage() {
 // ─── Overview Tab ──────────────────
 
 function OverviewTab({ store }: { store: StoreWithType }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(store.name)
+  const [editSlug, setEditSlug] = useState(store.slug)
+  const [editAddress, setEditAddress] = useState(store.address ?? '')
+  const [editPhone, setEditPhone] = useState(store.phone ?? '')
+  const [editDescription, setEditDescription] = useState(store.description ?? '')
+
   const { data: businessTypes } = useQuery<BusinessType[]>({
     queryKey: ['business-types'],
     queryFn: () => api<BusinessType[]>('/api/admin/business-types'),
   })
 
+  const invalidateStore = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-store', store.id] })
+    queryClient.invalidateQueries({ queryKey: ['admin-stores'] })
+  }
+
   const toggleMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
       await api(`/api/admin/stores/${store.id}`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-store', store.id] })
-      queryClient.invalidateQueries({ queryKey: ['admin-stores'] })
-      toast.success('更新しました')
-    },
+    onSuccess: () => { invalidateStore(); toast.success('更新しました') },
   })
 
   const updateTypeMutation = useMutation({
     mutationFn: async (businessTypeId: string | null) => {
       await api(`/api/admin/stores/${store.id}`, { method: 'PATCH', body: JSON.stringify({ businessTypeId }) })
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-store', store.id] })
-      queryClient.invalidateQueries({ queryKey: ['admin-stores'] })
-      toast.success('業種を更新しました')
-    },
+    onSuccess: () => { invalidateStore(); toast.success('業種を更新しました') },
   })
+
+  const updateInfoMutation = useMutation({
+    mutationFn: async () => {
+      await api(`/api/admin/stores/${store.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: editName.trim(),
+          slug: editSlug.trim(),
+          address: editAddress.trim() || null,
+          phone: editPhone.trim() || null,
+          description: editDescription.trim() || null,
+        }),
+      })
+    },
+    onSuccess: () => {
+      invalidateStore()
+      toast.success('店舗情報を更新しました')
+      setIsEditing(false)
+    },
+    onError: () => toast.error('更新に失敗しました'),
+  })
+
+  const startEditing = () => {
+    setEditName(store.name)
+    setEditSlug(store.slug)
+    setEditAddress(store.address ?? '')
+    setEditPhone(store.phone ?? '')
+    setEditDescription(store.description ?? '')
+    setIsEditing(true)
+  }
 
   const hours = store.business_hours as BusinessHours | null
 
@@ -152,16 +186,48 @@ function OverviewTab({ store }: { store: StoreWithType }) {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardContent className="space-y-3">
-            <h3 className="font-semibold text-gray-900">基本情報</h3>
-            <div className="space-y-2 text-sm">
-              <p className="flex items-center gap-2 text-gray-600">
-                <MapPin className="h-4 w-4 text-gray-400" /> {store.address ?? '未設定'}
-              </p>
-              <p className="flex items-center gap-2 text-gray-600">
-                <Phone className="h-4 w-4 text-gray-400" /> {store.phone ?? '未設定'}
-              </p>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">基本情報</h3>
+              {!isEditing && (
+                <Button variant="outline" size="sm" onClick={startEditing}>編集</Button>
+              )}
             </div>
-            {store.description && <p className="text-sm text-gray-600">{store.description}</p>}
+
+            {isEditing ? (
+              <div className="space-y-3">
+                <Input label="店舗名" value={editName} onChange={e => setEditName(e.target.value)} />
+                <Input label="スラッグ (URL)" value={editSlug} onChange={e => setEditSlug(e.target.value)} />
+                <Input label="住所" value={editAddress} onChange={e => setEditAddress(e.target.value)} />
+                <Input label="電話番号" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">紹介文</label>
+                  <textarea
+                    value={editDescription}
+                    onChange={e => setEditDescription(e.target.value)}
+                    rows={3}
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => updateInfoMutation.mutate()} loading={updateInfoMutation.isPending}>
+                    保存
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsEditing(false)}>キャンセル</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2 text-sm">
+                  <p className="flex items-center gap-2 text-gray-600">
+                    <MapPin className="h-4 w-4 text-gray-400" /> {store.address ?? '未設定'}
+                  </p>
+                  <p className="flex items-center gap-2 text-gray-600">
+                    <Phone className="h-4 w-4 text-gray-400" /> {store.phone ?? '未設定'}
+                  </p>
+                </div>
+                {store.description && <p className="text-sm text-gray-600">{store.description}</p>}
+              </>
+            )}
           </CardContent>
         </Card>
 
