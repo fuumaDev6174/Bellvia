@@ -26,6 +26,7 @@ const ReservationCalendarPage = lazy(() => import('@/features/admin-reservation/
 const MenuManagePage = lazy(() => import('@/features/admin-menu/pages/MenuManagePage'))
 const StaffManagePage = lazy(() => import('@/features/admin-staff/pages/StaffManagePage'))
 const CustomerListPage = lazy(() => import('@/features/admin-customer/pages/CustomerListPage'))
+const StoreManagePage = lazy(() => import('@/features/admin-store/pages/StoreManagePage'))
 
 function Loading() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/admin/menus" element={<MenuManagePage />} />
           <Route path="/admin/staff" element={<StaffManagePage />} />
           <Route path="/admin/customers" element={<CustomerListPage />} />
+          <Route path="/admin/stores" element={<StoreManagePage />} />
         </Route>
       </Routes>
     </Suspense>

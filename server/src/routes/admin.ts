@@ -7,6 +7,55 @@ const admin = new Hono()
 // All admin routes require authentication
 admin.use('*', authMiddleware)
 
+// ---------- Stores ----------
+
+// GET /api/admin/stores
+admin.get('/stores', async (c) => {
+  const staff = c.get('staff')
+
+  const { data, error } = await supabaseAdmin
+    .from('stores')
+    .select('*')
+    .eq('company_id', staff.companyId)
+    .order('name')
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// PATCH /api/admin/stores/:id
+admin.patch('/stores/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{
+    name?: string
+    slug?: string
+    address?: string
+    phone?: string
+    description?: string
+    businessHours?: unknown
+    isActive?: boolean
+  }>()
+
+  const updateData: Record<string, unknown> = {}
+  if (body.name !== undefined) updateData.name = body.name
+  if (body.slug !== undefined) updateData.slug = body.slug
+  if (body.address !== undefined) updateData.address = body.address
+  if (body.phone !== undefined) updateData.phone = body.phone
+  if (body.description !== undefined) updateData.description = body.description
+  if (body.businessHours !== undefined) updateData.business_hours = body.businessHours
+  if (body.isActive !== undefined) updateData.is_active = body.isActive
+
+  const { data, error } = await supabaseAdmin
+    .from('stores')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
 // ---------- Dashboard ----------
 
 // GET /api/admin/dashboard/stats

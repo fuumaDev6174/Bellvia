@@ -8,25 +8,19 @@ INSERT INTO companies (id, name, contact_email, phone) VALUES
 -- Stores
 INSERT INTO stores (id, company_id, name, slug, address, phone, description, business_hours, is_active) VALUES
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
-   'Bellevia 心斎橋店', 'shinsaibashi',
-   '大阪府大阪市中央区心斎橋筋1-1-1', '06-1111-2222',
-   '心斎橋駅すぐ。トレンドを取り入れたスタイルをご提案します。',
+   'Bellevia 尼崎店', 'amagasaki',
+   '兵庫県尼崎市', '06-1111-2222',
+   '尼崎エリアで上質なヘアサロン体験を。',
    '{"mon":{"open":"10:00","close":"20:00"},"tue":{"open":"10:00","close":"20:00"},"wed":null,"thu":{"open":"10:00","close":"20:00"},"fri":{"open":"10:00","close":"21:00"},"sat":{"open":"09:00","close":"20:00"},"sun":{"open":"09:00","close":"19:00"}}',
    true),
   ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
-   'Bellevia 梅田店', 'umeda',
-   '大阪府大阪市北区梅田2-2-2', '06-3333-4444',
-   '梅田エリアで上質なヘアサロン体験を。',
-   '{"mon":{"open":"10:00","close":"20:00"},"tue":{"open":"10:00","close":"20:00"},"wed":null,"thu":{"open":"10:00","close":"20:00"},"fri":{"open":"10:00","close":"21:00"},"sat":{"open":"09:00","close":"20:00"},"sun":{"open":"09:00","close":"19:00"}}',
-   true),
-  ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
-   'Bellevia なんば店', 'namba',
-   '大阪府大阪市中央区難波3-3-3', '06-5555-6666',
-   'なんば駅直結。カジュアルからフォーマルまで幅広く対応。',
+   'Bellevia 西神中央店', 'seishin-chuo',
+   '兵庫県神戸市西区', '078-1111-2222',
+   '西神中央で、あなたにぴったりのスタイルをご提案します。',
    '{"mon":{"open":"10:00","close":"20:00"},"tue":{"open":"10:00","close":"20:00"},"wed":null,"thu":{"open":"10:00","close":"20:00"},"fri":{"open":"10:00","close":"21:00"},"sat":{"open":"09:00","close":"20:00"},"sun":{"open":"09:00","close":"19:00"}}',
    true);
 
--- Menus for Shinsaibashi
+-- Menus for Amagasaki
 INSERT INTO menus (company_id, store_id, name, category, description, price, duration_min, is_public, sort_order) VALUES
   ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001',
    'カット', 'カット', 'シャンプー・ブロー込み', 5500, 60, true, 1),
@@ -41,7 +35,7 @@ INSERT INTO menus (company_id, store_id, name, category, description, price, dur
   ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001',
    'ヘッドスパ', 'スパ', 'リラクゼーションヘッドスパ', 4400, 40, true, 6);
 
--- Menus for Umeda
+-- Menus for Seishin-Chuo
 INSERT INTO menus (company_id, store_id, name, category, description, price, duration_min, is_public, sort_order) VALUES
   ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002',
    'カット', 'カット', 'シャンプー・ブロー込み', 5500, 60, true, 1),
@@ -53,17 +47,6 @@ INSERT INTO menus (company_id, store_id, name, category, description, price, dur
    'パーマ', 'パーマ', 'カット込み', 13200, 150, true, 4),
   ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002',
    'トリートメント', 'トリートメント', '髪質改善トリートメント', 5500, 45, true, 5);
-
--- Menus for Namba
-INSERT INTO menus (company_id, store_id, name, category, description, price, duration_min, is_public, sort_order) VALUES
-  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003',
-   'カット', 'カット', 'シャンプー・ブロー込み', 5500, 60, true, 1),
-  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003',
-   'カット + カラー', 'カラー', 'カット・カラー・シャンプー・ブロー込み', 11000, 120, true, 2),
-  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003',
-   'カラーのみ', 'カラー', 'リタッチ or フルカラー', 7700, 90, true, 3),
-  ('a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003',
-   'パーマ', 'パーマ', 'カット込み', 13200, 150, true, 4);
 
 -- Sample customers
 INSERT INTO customers (company_id, name, name_kana, phone, email, gender, source, visit_count, first_visit_at) VALUES

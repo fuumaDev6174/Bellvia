@@ -5,6 +5,7 @@ import {
   UtensilsCrossed,
   Users,
   UserCircle,
+  Store,
   LogOut,
   Menu as MenuIcon,
   Scissors,
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/admin/menus', icon: UtensilsCrossed, label: 'メニュー管理' },
   { to: '/admin/staff', icon: Users, label: 'スタッフ管理' },
   { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
+  { to: '/admin/stores', icon: Store, label: '店舗管理' },
 ]
 
 export function AdminLayout() {
