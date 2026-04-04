@@ -436,7 +436,38 @@ admin.patch('/staff/:id', async (c) => {
 admin.get('/customers', async (c) => {
   const staff = c.get('staff')
   const search = c.req.query('search')
+  const storeId = c.req.query('storeId')
 
+  if (storeId) {
+    // Get customer IDs who have reservations at this store
+    const { data: reservations, error: resError } = await supabaseAdmin
+      .from('reservations')
+      .select('customer_id')
+      .eq('store_id', storeId)
+      .not('customer_id', 'is', null)
+
+    if (resError) return c.json({ message: resError.message }, 500)
+
+    const customerIds = [...new Set((reservations ?? []).map(r => r.customer_id).filter(Boolean))]
+    if (customerIds.length === 0) return c.json({ data: [] })
+
+    let query = supabaseAdmin
+      .from('customers')
+      .select('*')
+      .in('id', customerIds)
+      .order('last_visit_at', { ascending: false, nullsFirst: false })
+
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`
+      query = query.or(`name.ilike.${term},phone.ilike.${term}`)
+    }
+
+    const { data, error } = await query
+    if (error) return c.json({ message: error.message }, 500)
+    return c.json({ data: data ?? [] })
+  }
+
+  // No storeId: return all company customers
   let query = supabaseAdmin
     .from('customers')
     .select('*')

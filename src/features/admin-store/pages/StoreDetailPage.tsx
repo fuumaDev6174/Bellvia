@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, Badge, Select, Button, Input, Spinner } 
 import { MapPin, Phone, Clock, ExternalLink, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
 import { TIMEZONE } from '@/lib/constants'
-import type { Store, Staff, BusinessHours, BusinessHourEntry } from '@/types/models'
+import type { Store, Staff, Customer, BusinessHours, BusinessHourEntry } from '@/types/models'
 
 interface BusinessType { id: string; name: string; color: string }
 interface StoreWithType extends Store { business_type?: BusinessType | null }
@@ -18,7 +18,7 @@ interface InventoryStock { id: string; quantity: number; min_quantity: number; i
 
 const DAY_LABELS: Record<string, string> = { mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日' }
 const PAYMENT_LABELS: Record<string, string> = { cash: '現金', paypay: 'PayPay', card: 'カード', other: 'その他' }
-const TABS = ['概要', 'スタッフ', '売上', '在庫'] as const
+const TABS = ['概要', 'スタッフ', '顧客', '売上', '在庫'] as const
 type Tab = typeof TABS[number]
 
 function getMonthStart(): string {
@@ -109,6 +109,7 @@ export default function StoreDetailPage() {
       {/* Tab content */}
       {tab === '概要' && <OverviewTab store={store} />}
       {tab === 'スタッフ' && <StaffTab storeId={store.id} />}
+      {tab === '顧客' && <CustomerTab storeId={store.id} />}
       {tab === '売上' && <SalesTab storeId={store.id} />}
       {tab === '在庫' && <InventoryTab storeId={store.id} />}
     </div>
@@ -322,6 +323,71 @@ function StaffTab({ storeId }: { storeId: string }) {
         </table>
       </div>
     </Card>
+  )
+}
+
+// ─── Customer Tab ──────────────────
+
+function CustomerTab({ storeId }: { storeId: string }) {
+  const [search, setSearch] = useState('')
+
+  const { data: customers, isLoading } = useQuery<Customer[]>({
+    queryKey: ['admin-customers', search, storeId],
+    queryFn: () => {
+      const params = new URLSearchParams({ storeId })
+      if (search.trim()) params.set('search', search.trim())
+      return api<Customer[]>(`/api/admin/customers?${params}`)
+    },
+  })
+
+  if (isLoading) return <div className="flex justify-center py-12"><Spinner className="h-6 w-6" /></div>
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="名前・電話番号で検索..."
+          className="w-full rounded-lg border border-gray-300 py-2 pl-3 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <Card>
+        <CardHeader>
+          <h2 className="text-lg font-semibold text-gray-900">この店舗の顧客 ({customers?.length ?? 0}名)</h2>
+        </CardHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50 text-left">
+                <th className="px-4 py-3 font-medium text-gray-500">氏名</th>
+                <th className="px-4 py-3 font-medium text-gray-500">フリガナ</th>
+                <th className="px-4 py-3 font-medium text-gray-500">電話番号</th>
+                <th className="px-4 py-3 font-medium text-gray-500">来店回数</th>
+                <th className="px-4 py-3 font-medium text-gray-500">最終来店</th>
+                <th className="px-4 py-3 font-medium text-gray-500">流入元</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {customers?.map((c) => (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium">{c.name}</td>
+                  <td className="px-4 py-3 text-gray-500">{c.name_kana ?? '-'}</td>
+                  <td className="px-4 py-3">{c.phone ?? '-'}</td>
+                  <td className="px-4 py-3">{c.visit_count}回</td>
+                  <td className="px-4 py-3">{c.last_visit_at ? formatDateTimeJP(c.last_visit_at) : '-'}</td>
+                  <td className="px-4 py-3 text-gray-500">{c.source ?? '-'}</td>
+                </tr>
+              ))}
+              {(!customers || customers.length === 0) && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">この店舗の顧客はいません</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
   )
 }
 

@@ -26,6 +26,7 @@ const ReservationCalendarPage = lazy(() => import('@/features/admin-reservation/
 const MenuManagePage = lazy(() => import('@/features/admin-menu/pages/MenuManagePage'))
 const StaffManagePage = lazy(() => import('@/features/admin-staff/pages/StaffManagePage'))
 const CustomerListPage = lazy(() => import('@/features/admin-customer/pages/CustomerListPage'))
+const CustomerAllPage = lazy(() => import('@/features/admin-customer/pages/CustomerAllPage'))
 const StoreManagePage = lazy(() => import('@/features/admin-store/pages/StoreManagePage'))
 const StoreDetailPage = lazy(() => import('@/features/admin-store/pages/StoreDetailPage'))
 const SalesPage = lazy(() => import('@/features/admin-sales/pages/SalesPage'))
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/admin/stores" element={<StoreManagePage />} />
             <Route path="/admin/stores/:storeId" element={<StoreDetailPage />} />
             <Route path="/admin/business-types" element={<BusinessTypeManagePage />} />
+            <Route path="/admin/customers-all" element={<CustomerAllPage />} />
             <Route path="/admin/sales-overview" element={<SalesOverviewPage />} />
             <Route path="/admin/inventory-overview" element={<InventoryOverviewPage />} />
           </Route>

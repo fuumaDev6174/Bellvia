@@ -3,43 +3,34 @@ import { Search } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { formatDateTimeJP } from '@/lib/utils'
-import { useStoreContext } from '@/hooks/useStoreContext'
 import { useCustomers } from '../hooks/useCustomers'
 import { CustomerDetailModal } from '../components/CustomerDetailModal'
 import type { Customer } from '@/types/models'
 
 function useDebounce(value: string, delay: number): string {
   const [debounced, setDebounced] = useState(value)
-
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), delay)
     return () => clearTimeout(timer)
   }, [value, delay])
-
   return debounced
 }
 
-export default function CustomerListPage() {
-  const { activeStoreId } = useStoreContext()
+export default function CustomerAllPage() {
   const [searchInput, setSearchInput] = useState('')
   const debouncedSearch = useDebounce(searchInput, 400)
-  const { data: customers, isLoading } = useCustomers(debouncedSearch, activeStoreId)
+  const { data: customers, isLoading } = useCustomers(debouncedSearch)
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  function handleRowClick(customer: Customer) {
-    setSelectedCustomer(customer)
-    setModalOpen(true)
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">顧客管理</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">顧客一覧（全社）</h1>
+        <p className="mt-1 text-sm text-gray-500">全店舗横断の顧客データ</p>
       </div>
 
-      {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
@@ -79,15 +70,13 @@ export default function CustomerListPage() {
                     <tr
                       key={customer.id}
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => handleRowClick(customer)}
+                      onClick={() => { setSelectedCustomer(customer); setModalOpen(true) }}
                     >
                       <td className="px-4 py-3 font-medium text-gray-900">{customer.name}</td>
                       <td className="px-4 py-3 text-gray-700">{customer.name_kana ?? '-'}</td>
                       <td className="px-4 py-3 text-gray-700">{customer.phone ?? '-'}</td>
                       <td className="px-4 py-3 text-gray-700">{customer.email ?? '-'}</td>
-                      <td className="px-4 py-3 text-right text-gray-700">
-                        {customer.visit_count ?? 0}
-                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">{customer.visit_count ?? 0}</td>
                       <td className="px-4 py-3 text-gray-700">
                         {customer.last_visit_at ? formatDateTimeJP(customer.last_visit_at) : '-'}
                       </td>
