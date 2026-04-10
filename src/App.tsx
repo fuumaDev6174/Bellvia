@@ -34,6 +34,8 @@ const InventoryPage = lazy(() => import('@/features/admin-inventory/pages/Invent
 const BusinessTypeManagePage = lazy(() => import('@/features/admin-business-type/pages/BusinessTypeManagePage'))
 const SalesOverviewPage = lazy(() => import('@/features/admin-sales/pages/SalesOverviewPage'))
 const InventoryOverviewPage = lazy(() => import('@/features/admin-inventory/pages/InventoryOverviewPage'))
+const AttendanceManagePage = lazy(() => import('@/features/admin-attendance/pages/AttendanceManagePage'))
+const WorkloadPage = lazy(() => import('@/features/admin-workload/pages/WorkloadPage'))
 
 function Loading() {
   return (
@@ -84,6 +86,8 @@ export default function App() {
             <Route path="/admin/customers" element={<CustomerListPage />} />
             <Route path="/admin/sales" element={<SalesPage />} />
             <Route path="/admin/inventory" element={<InventoryPage />} />
+            <Route path="/admin/attendance" element={<AttendanceManagePage />} />
+            <Route path="/admin/workload" element={<WorkloadPage />} />
           </Route>
 
           {/* company_admin only */}

@@ -26,6 +26,7 @@ export function useCreateMenu() {
       price: number
       duration_min: number
       is_public?: boolean
+      workload_points?: number
     }) =>
       api<Menu>('/api/admin/menus', {
         method: 'POST',
@@ -36,6 +37,7 @@ export function useCreateMenu() {
           price: input.price,
           durationMin: input.duration_min,
           isPublic: input.is_public,
+          workloadPoints: input.workload_points,
         }),
       }),
     onSuccess: () => {
@@ -63,6 +65,7 @@ export function useUpdateMenu() {
           durationMin: input.duration_min,
           isPublic: input.is_public,
           sortOrder: input.sort_order,
+          workloadPoints: input.workload_points,
         }),
       }),
     onSuccess: () => {

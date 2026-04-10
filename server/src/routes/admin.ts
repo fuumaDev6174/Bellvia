@@ -308,6 +308,7 @@ admin.post('/menus', async (c) => {
     durationMin: number
     isPublic?: boolean
     sortOrder?: number
+    workloadPoints?: number
   }>()
 
   const { data, error } = await supabaseAdmin
@@ -322,6 +323,7 @@ admin.post('/menus', async (c) => {
       duration_min: body.durationMin,
       is_public: body.isPublic ?? true,
       sort_order: body.sortOrder ?? 0,
+      workload_points: body.workloadPoints ?? 1.0,
     })
     .select()
     .single()
@@ -341,6 +343,7 @@ admin.patch('/menus/:id', async (c) => {
     durationMin?: number
     isPublic?: boolean
     sortOrder?: number
+    workloadPoints?: number
   }>()
 
   const updateData: Record<string, unknown> = {}
@@ -351,6 +354,7 @@ admin.patch('/menus/:id', async (c) => {
   if (body.durationMin !== undefined) updateData.duration_min = body.durationMin
   if (body.isPublic !== undefined) updateData.is_public = body.isPublic
   if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder
+  if (body.workloadPoints !== undefined) updateData.workload_points = body.workloadPoints
 
   const { data, error } = await supabaseAdmin
     .from('menus')
@@ -374,6 +378,65 @@ admin.delete('/menus/:id', async (c) => {
 
   if (error) return c.json({ message: error.message }, 500)
   return c.json({ data: { message: 'Deleted' } })
+})
+
+// ---------- Workload ----------
+
+// GET /api/admin/workload
+admin.get('/workload', async (c) => {
+  const staff = c.get('staff')
+  const storeId = c.req.query('storeId')
+  const startDate = c.req.query('startDate')
+  const endDate = c.req.query('endDate')
+  const staffId = c.req.query('staffId')
+
+  let query = supabaseAdmin
+    .from('reservations')
+    .select(`
+      staff_id,
+      staff:staff_id (display_name),
+      menu:menu_id (name, workload_points)
+    `)
+    .eq('company_id', staff.companyId)
+    .eq('status', 'completed')
+
+  if (storeId) query = query.eq('store_id', storeId)
+  if (staffId) query = query.eq('staff_id', staffId)
+  if (startDate) query = query.gte('start_at', `${startDate}T00:00:00`)
+  if (endDate) query = query.lte('start_at', `${endDate}T23:59:59`)
+
+  const { data, error } = await query
+  if (error) return c.json({ message: error.message }, 500)
+
+  // Aggregate by staff
+  const staffMap = new Map<string, {
+    staffId: string
+    staffName: string
+    totalPoints: number
+    totalCount: number
+    byMenu: Record<string, { count: number; points: number }>
+  }>()
+
+  for (const r of data ?? []) {
+    const sid = r.staff_id
+    const staffRel = r.staff as unknown as { display_name: string } | null
+    const menuRel = r.menu as unknown as { name: string; workload_points: number } | null
+    const staffName = staffRel?.display_name ?? '-'
+    const menuName = menuRel?.name ?? '-'
+    const points = menuRel?.workload_points ?? 1.0
+
+    if (!staffMap.has(sid)) {
+      staffMap.set(sid, { staffId: sid, staffName, totalPoints: 0, totalCount: 0, byMenu: {} })
+    }
+    const entry = staffMap.get(sid)!
+    entry.totalPoints += points
+    entry.totalCount++
+    if (!entry.byMenu[menuName]) entry.byMenu[menuName] = { count: 0, points: 0 }
+    entry.byMenu[menuName].count++
+    entry.byMenu[menuName].points += points
+  }
+
+  return c.json({ data: Array.from(staffMap.values()) })
 })
 
 // ---------- Staff ----------
@@ -586,6 +649,67 @@ admin.get('/sales/summary', async (c) => {
   })
 })
 
+// POST /api/admin/sales/import-paypay
+admin.post('/sales/import-paypay', async (c) => {
+  const staff = c.get('staff')
+  if (staff.role !== 'company_admin' && staff.role !== 'store_manager') {
+    return c.json({ message: 'Forbidden' }, 403)
+  }
+
+  const body = await c.req.json<{
+    storeId: string
+    rows: Array<{
+      transactionId: string
+      amount: number
+      paidAt: string
+      status: string
+    }>
+  }>()
+
+  if (!body.storeId || !body.rows || !Array.isArray(body.rows)) {
+    return c.json({ message: 'Invalid request body' }, 400)
+  }
+
+  // Filter to completed transactions only
+  const completedRows = body.rows.filter(
+    (r) => r.status === '完了' || r.status === 'completed' || r.status === 'SUCCESS'
+  )
+  const skipped = body.rows.length - completedRows.length
+
+  if (completedRows.length === 0) {
+    return c.json({ data: { imported: 0, skipped, duplicates: 0 } })
+  }
+
+  // Check for existing transaction IDs to avoid duplicates
+  const txnIds = completedRows.map((r) => r.transactionId)
+  const { data: existing } = await supabaseAdmin
+    .from('sales')
+    .select('paypay_transaction_id')
+    .in('paypay_transaction_id', txnIds)
+
+  const existingSet = new Set((existing ?? []).map((e) => e.paypay_transaction_id))
+  const newRows = completedRows.filter((r) => !existingSet.has(r.transactionId))
+  const duplicates = completedRows.length - newRows.length
+
+  if (newRows.length === 0) {
+    return c.json({ data: { imported: 0, skipped, duplicates } })
+  }
+
+  const insertData = newRows.map((r) => ({
+    store_id: body.storeId,
+    company_id: staff.companyId,
+    amount: r.amount,
+    payment_method: 'paypay',
+    paid_at: r.paidAt,
+    paypay_transaction_id: r.transactionId,
+  }))
+
+  const { error } = await supabaseAdmin.from('sales').insert(insertData)
+  if (error) return c.json({ message: error.message }, 500)
+
+  return c.json({ data: { imported: newRows.length, skipped, duplicates } })
+})
+
 // ---------- Inventory ----------
 
 // GET /api/admin/inventory/items
@@ -636,6 +760,162 @@ admin.patch('/inventory/stock/:id', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('inventory_stock')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
+// ---------- Attendances ----------
+
+// GET /api/admin/attendances/my-status
+admin.get('/attendances/my-status', async (c) => {
+  const staff = c.get('staff')
+
+  const { data, error } = await supabaseAdmin
+    .from('attendances')
+    .select('*')
+    .eq('staff_id', staff.id)
+    .eq('status', 'clocked_in')
+    .maybeSingle()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
+// POST /api/admin/attendances/clock-in
+admin.post('/attendances/clock-in', async (c) => {
+  const staff = c.get('staff')
+  const body = await c.req.json<{ note?: string }>().catch(() => ({ note: undefined }))
+
+  // Check if already clocked in
+  const { data: existing } = await supabaseAdmin
+    .from('attendances')
+    .select('id')
+    .eq('staff_id', staff.id)
+    .eq('status', 'clocked_in')
+    .maybeSingle()
+
+  if (existing) {
+    return c.json({ message: 'すでに出勤中です' }, 400)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('attendances')
+    .insert({
+      staff_id: staff.id,
+      store_id: staff.storeId,
+      company_id: staff.companyId,
+      clock_in: new Date().toISOString(),
+      clock_in_note: body.note ?? null,
+      status: 'clocked_in',
+    })
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data }, 201)
+})
+
+// POST /api/admin/attendances/clock-out
+admin.post('/attendances/clock-out', async (c) => {
+  const staff = c.get('staff')
+  const body = await c.req.json<{ note?: string }>().catch(() => ({ note: undefined }))
+
+  const { data: existing, error: findError } = await supabaseAdmin
+    .from('attendances')
+    .select('id')
+    .eq('staff_id', staff.id)
+    .eq('status', 'clocked_in')
+    .maybeSingle()
+
+  if (findError) return c.json({ message: findError.message }, 500)
+  if (!existing) {
+    return c.json({ message: '出勤記録がありません' }, 400)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('attendances')
+    .update({
+      clock_out: new Date().toISOString(),
+      clock_out_note: body.note ?? null,
+      status: 'completed',
+    })
+    .eq('id', existing.id)
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data })
+})
+
+// GET /api/admin/attendances
+admin.get('/attendances', async (c) => {
+  const staff = c.get('staff')
+  if (staff.role !== 'company_admin' && staff.role !== 'store_manager') {
+    return c.json({ message: 'Forbidden' }, 403)
+  }
+
+  const storeId = c.req.query('storeId')
+  const startDate = c.req.query('startDate')
+  const endDate = c.req.query('endDate')
+  const staffId = c.req.query('staffId')
+
+  let query = supabaseAdmin
+    .from('attendances')
+    .select(`
+      *,
+      staff:staff_id (display_name),
+      corrector:corrected_by (display_name)
+    `)
+    .eq('company_id', staff.companyId)
+    .order('clock_in', { ascending: false })
+
+  if (storeId) query = query.eq('store_id', storeId)
+  if (staffId) query = query.eq('staff_id', staffId)
+  if (startDate) query = query.gte('clock_in', `${startDate}T00:00:00`)
+  if (endDate) query = query.lte('clock_in', `${endDate}T23:59:59`)
+
+  const { data, error } = await query
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// PATCH /api/admin/attendances/:id
+admin.patch('/attendances/:id', async (c) => {
+  const staff = c.get('staff')
+  if (staff.role !== 'company_admin' && staff.role !== 'store_manager') {
+    return c.json({ message: 'Forbidden' }, 403)
+  }
+
+  const id = c.req.param('id')
+  const body = await c.req.json<{
+    clockIn?: string
+    clockOut?: string
+    clockInNote?: string
+    clockOutNote?: string
+    correctionReason: string
+  }>()
+
+  if (!body.correctionReason) {
+    return c.json({ message: '修正理由は必須です' }, 400)
+  }
+
+  const updateData: Record<string, unknown> = {
+    status: 'corrected',
+    corrected_by: staff.id,
+    correction_reason: body.correctionReason,
+  }
+  if (body.clockIn !== undefined) updateData.clock_in = body.clockIn
+  if (body.clockOut !== undefined) updateData.clock_out = body.clockOut
+  if (body.clockInNote !== undefined) updateData.clock_in_note = body.clockInNote
+  if (body.clockOutNote !== undefined) updateData.clock_out_note = body.clockOutNote
+
+  const { data, error } = await supabaseAdmin
+    .from('attendances')
     .update(updateData)
     .eq('id', id)
     .select()

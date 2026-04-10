@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Upload } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useStoreContext } from '@/hooks/useStoreContext'
-import { Card, CardContent, CardHeader, Input, Spinner } from '@/components/ui'
+import { Card, CardContent, CardHeader, Input, Spinner, Button } from '@/components/ui'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
 import { TIMEZONE } from '@/lib/constants'
+import { PayPayImportModal } from '../components/PayPayImportModal'
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: '現金', paypay: 'PayPay', card: 'カード', other: 'その他',
@@ -31,6 +33,7 @@ export default function SalesPage() {
   const { activeStoreId } = useStoreContext()
   const [startDate, setStartDate] = useState(getMonthStart())
   const [endDate, setEndDate] = useState(getToday())
+  const [importOpen, setImportOpen] = useState(false)
 
   const { data: summary, isLoading: loadingSummary } = useQuery<SalesSummary>({
     queryKey: ['sales-summary', activeStoreId, startDate, endDate],
@@ -46,7 +49,13 @@ export default function SalesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">売上管理</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">売上管理</h1>
+        <Button onClick={() => setImportOpen(true)}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          PayPayインポート
+        </Button>
+      </div>
 
       <Card>
         <div className="flex flex-wrap items-end gap-4 p-4">
@@ -118,6 +127,8 @@ export default function SalesPage() {
           </div>
         )}
       </Card>
+
+      <PayPayImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }

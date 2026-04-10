@@ -7,6 +7,7 @@ import { Card, CardHeader, CardContent, Spinner } from '@/components/ui'
 import { formatDateJP, formatTimeJP } from '@/lib/utils'
 import { TIMEZONE } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { ClockButton } from '@/features/admin-attendance/components/ClockButton'
 import type { ReservationWithDetails, Staff } from '@/types/models'
 
 function getToday(): string {
@@ -109,11 +110,14 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {isStylist ? 'マイダッシュボード' : 'ダッシュボード'}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">{formatDateJP(today)}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isStylist ? 'マイダッシュボード' : 'ダッシュボード'}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">{formatDateJP(today)}</p>
+        </div>
+        <ClockButton />
       </div>
 
       {/* Stats Cards */}

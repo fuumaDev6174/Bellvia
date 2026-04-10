@@ -145,6 +145,7 @@ export interface Database {
           image_url: string | null
           is_public: boolean
           sort_order: number
+          workload_points: number
           created_at: string
           updated_at: string
         }
@@ -160,6 +161,7 @@ export interface Database {
           image_url?: string | null
           is_public?: boolean
           sort_order?: number
+          workload_points?: number
           created_at?: string
           updated_at?: string
         }
@@ -175,6 +177,7 @@ export interface Database {
           image_url?: string | null
           is_public?: boolean
           sort_order?: number
+          workload_points?: number
           updated_at?: string
         }
       }
@@ -334,6 +337,98 @@ export interface Database {
           break_start?: string | null
           break_end?: string | null
           status?: string | null
+          updated_at?: string
+        }
+      }
+      attendances: {
+        Row: {
+          id: string
+          staff_id: string
+          store_id: string
+          company_id: string
+          clock_in: string
+          clock_out: string | null
+          clock_in_note: string | null
+          clock_out_note: string | null
+          status: string
+          corrected_by: string | null
+          correction_reason: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          staff_id: string
+          store_id: string
+          company_id: string
+          clock_in: string
+          clock_out?: string | null
+          clock_in_note?: string | null
+          clock_out_note?: string | null
+          status?: string
+          corrected_by?: string | null
+          correction_reason?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          staff_id?: string
+          store_id?: string
+          company_id?: string
+          clock_in?: string
+          clock_out?: string | null
+          clock_in_note?: string | null
+          clock_out_note?: string | null
+          status?: string
+          corrected_by?: string | null
+          correction_reason?: string | null
+          updated_at?: string
+        }
+      }
+      sales: {
+        Row: {
+          id: string
+          store_id: string
+          company_id: string
+          staff_id: string | null
+          customer_id: string | null
+          reservation_id: string | null
+          amount: number
+          payment_method: string
+          paid_at: string
+          paypay_transaction_id: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          company_id: string
+          staff_id?: string | null
+          customer_id?: string | null
+          reservation_id?: string | null
+          amount: number
+          payment_method?: string
+          paid_at?: string
+          paypay_transaction_id?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          company_id?: string
+          staff_id?: string | null
+          customer_id?: string | null
+          reservation_id?: string | null
+          amount?: number
+          payment_method?: string
+          paid_at?: string
+          paypay_transaction_id?: string | null
+          notes?: string | null
           updated_at?: string
         }
       }

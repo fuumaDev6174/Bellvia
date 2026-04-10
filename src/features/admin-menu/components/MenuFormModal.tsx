@@ -23,6 +23,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
   const [durationMin, setDurationMin] = useState('')
+  const [workloadPoints, setWorkloadPoints] = useState('1.0')
   const [isPublic, setIsPublic] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -34,6 +35,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
         setDescription(menu.description ?? '')
         setPrice(String(menu.price))
         setDurationMin(String(menu.duration_min))
+        setWorkloadPoints(String(menu.workload_points ?? 1.0))
         setIsPublic(menu.is_public ?? true)
       } else {
         setName('')
@@ -41,6 +43,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
         setDescription('')
         setPrice('')
         setDurationMin('')
+        setWorkloadPoints('1.0')
         setIsPublic(true)
       }
       setErrors({})
@@ -66,6 +69,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
       description: description.trim() || null,
       price: Number(price),
       duration_min: Number(durationMin),
+      workload_points: Number(workloadPoints),
       is_public: isPublic,
     }
 
@@ -112,7 +116,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <Input
             label="料金（円）"
             type="number"
@@ -130,6 +134,14 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
             onChange={(e) => setDurationMin(e.target.value)}
             error={errors.durationMin}
             required
+          />
+          <Input
+            label="仕事量ポイント"
+            type="number"
+            min={0}
+            step={0.1}
+            value={workloadPoints}
+            onChange={(e) => setWorkloadPoints(e.target.value)}
           />
         </div>
 

@@ -67,6 +67,7 @@ export default function MenuManagePage() {
                   <th className="px-4 py-3 font-medium">カテゴリ</th>
                   <th className="px-4 py-3 font-medium text-right">料金</th>
                   <th className="px-4 py-3 font-medium text-right">所要時間</th>
+                  <th className="px-4 py-3 font-medium text-right">ポイント</th>
                   <th className="px-4 py-3 font-medium text-center">公開</th>
                   <th className="px-4 py-3 font-medium text-right">操作</th>
                 </tr>
@@ -80,6 +81,7 @@ export default function MenuManagePage() {
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatPrice(menu.price)}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatDuration(menu.duration_min)}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{menu.workload_points ?? 1.0}</td>
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => handleTogglePublic(menu)}
@@ -116,7 +118,7 @@ export default function MenuManagePage() {
                 ))}
                 {menus?.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                       メニューがまだ登録されていません
                     </td>
                   </tr>

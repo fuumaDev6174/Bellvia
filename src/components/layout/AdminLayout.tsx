@@ -19,6 +19,8 @@ import {
   ChevronRight,
   BarChart3,
   Boxes,
+  Clock,
+  Activity,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useSignOut } from '@/hooks/useAuth'
@@ -57,6 +59,8 @@ const adminNav: NavItem[] = [
       { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
       { to: '/admin/inventory', icon: Package, label: '在庫管理' },
       { to: '/admin/customers', icon: UserCircle, label: '顧客管理' },
+      { to: '/admin/attendance', icon: Clock, label: '勤怠管理' },
+      { to: '/admin/workload', icon: Activity, label: '仕事量' },
     ],
   },
   { to: '/admin/customers-all', icon: UserCircle, label: '顧客一覧（全社）', separator: true },
@@ -74,6 +78,8 @@ const managerNav: NavItem[] = [
   { to: '/admin/sales', icon: JapaneseYen, label: '売上管理' },
   { to: '/admin/inventory', icon: Package, label: '在庫管理' },
   { to: '/admin/customers', icon: UserCircle, label: '顧客一覧' },
+  { to: '/admin/attendance', icon: Clock, label: '勤怠管理' },
+  { to: '/admin/workload', icon: Activity, label: '仕事量' },
 ]
 
 // stylist nav: dashboard only
@@ -81,7 +87,7 @@ const stylistNav: NavItem[] = [
   { to: '/admin', icon: LayoutDashboard, label: 'ダッシュボード', exact: true },
 ]
 
-const CHILD_PATHS = ['/admin/reservations', '/admin/menus', '/admin/staff', '/admin/sales', '/admin/inventory', '/admin/customers']
+const CHILD_PATHS = ['/admin/reservations', '/admin/menus', '/admin/staff', '/admin/sales', '/admin/inventory', '/admin/customers', '/admin/attendance', '/admin/workload']
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'store_manager', label: '店長として表示' },

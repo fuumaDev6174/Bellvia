@@ -8,6 +8,8 @@ export type Menu = Database['public']['Tables']['menus']['Row']
 export type Customer = Database['public']['Tables']['customers']['Row']
 export type Reservation = Database['public']['Tables']['reservations']['Row']
 export type Shift = Database['public']['Tables']['shifts']['Row']
+export type Sale = Database['public']['Tables']['sales']['Row']
+export type Attendance = Database['public']['Tables']['attendances']['Row']
 
 // Insert types (what you send for INSERT)
 export type CompanyInsert = Database['public']['Tables']['companies']['Insert']
@@ -17,6 +19,8 @@ export type MenuInsert = Database['public']['Tables']['menus']['Insert']
 export type CustomerInsert = Database['public']['Tables']['customers']['Insert']
 export type ReservationInsert = Database['public']['Tables']['reservations']['Insert']
 export type ShiftInsert = Database['public']['Tables']['shifts']['Insert']
+export type SaleInsert = Database['public']['Tables']['sales']['Insert']
+export type AttendanceInsert = Database['public']['Tables']['attendances']['Insert']
 
 // Update types (what you send for UPDATE)
 export type MenuUpdate = Database['public']['Tables']['menus']['Update']
@@ -32,6 +36,12 @@ export type ReservationStatus = (typeof RESERVATION_STATUSES)[number]
 
 export const RESERVATION_SOURCES = ['web', 'phone', 'line', 'walk-in'] as const
 export type ReservationSource = (typeof RESERVATION_SOURCES)[number]
+
+export const ATTENDANCE_STATUSES = ['clocked_in', 'completed', 'corrected'] as const
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number]
+
+export const PAYMENT_METHODS = ['cash', 'card', 'paypay', 'other'] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 export const MENU_CATEGORIES = ['カット', 'カラー', 'パーマ', 'トリートメント', 'スパ', 'その他'] as const
 export type MenuCategory = (typeof MENU_CATEGORIES)[number]
