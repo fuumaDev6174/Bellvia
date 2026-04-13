@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   stores,
@@ -23,7 +23,7 @@ pub.get('/stores', async (c) => {
   // Attach business hours
   const storeIds = storeRows.map(s => s.id)
   const hours = storeIds.length > 0
-    ? await db.select().from(storeBusinessHours).where(sql`${storeBusinessHours.storeId} IN ${storeIds}`)
+    ? await db.select().from(storeBusinessHours).where(inArray(storeBusinessHours.storeId, storeIds))
     : []
 
   const data = storeRows.map(s => ({
@@ -117,7 +117,7 @@ pub.get('/stores/:storeId/stylists', async (c) => {
   // Attach specialties
   const staffIds = staffRows.map(s => s.id)
   const specs = staffIds.length > 0
-    ? await db.select().from(staffSpecialties).where(sql`${staffSpecialties.staffId} IN ${staffIds}`)
+    ? await db.select().from(staffSpecialties).where(inArray(staffSpecialties.staffId, staffIds))
     : []
 
   const data = staffRows.map(s => ({
@@ -145,10 +145,11 @@ pub.get('/stores/:storeId/available-slots', async (c) => {
       ${date}::date,
       ${menuId}::uuid,
       ${staffId ? staffId : null}::uuid
-    )
+    ) as data
   `)
 
-  const data = (result as unknown as Array<{ get_available_slots: unknown }>)[0]?.get_available_slots ?? []
+  const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows ?? result
+  const data = (rows as Array<Record<string, unknown>>)[0]?.data ?? []
   return c.json({ data })
 })
 
@@ -176,10 +177,11 @@ pub.post('/reservations', async (c) => {
         ${body.guestPhone}::text,
         ${body.guestEmail ?? null}::text,
         ${body.notes ?? null}::text
-      )
+      ) as data
     `)
 
-    const data = (result as unknown as Array<{ create_guest_reservation: unknown }>)[0]?.create_guest_reservation
+    const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows ?? result
+    const data = (rows as Array<Record<string, unknown>>)[0]?.data
     return c.json({ data }, 201)
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Reservation failed'

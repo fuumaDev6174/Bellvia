@@ -7,7 +7,7 @@ import { queryClient } from '@/lib/queryClient'
 import { Card, CardContent, CardHeader, Badge, Select, Button, Input, Spinner } from '@/components/ui'
 import { MapPin, Phone, Clock, ExternalLink, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
-import { TIMEZONE } from '@/lib/constants'
+import { TIMEZONE, DAY_LABELS } from '@/lib/constants'
 import type { Store, Staff, Customer } from '@/types/models'
 
 interface BusinessType { id: string; name: string; color: string }
@@ -16,7 +16,6 @@ interface SaleRecord { id: string; amount: number; payment_method: string; paid_
 interface SalesSummary { totalAmount: number; totalCount: number; byPaymentMethod: Record<string, { count: number; amount: number }> }
 interface InventoryStock { id: string; quantity: number; min_quantity: number; item?: { name: string; category: string | null; unit: string; cost_price: number } }
 
-const DAY_LABELS: Record<string, string> = { mon: '月', tue: '火', wed: '水', thu: '木', fri: '金', sat: '土', sun: '日' }
 const PAYMENT_LABELS: Record<string, string> = { cash: '現金', paypay: 'PayPay', card: 'カード', other: 'その他' }
 const TABS = ['概要', 'スタッフ', '顧客', '売上', '在庫'] as const
 type Tab = typeof TABS[number]

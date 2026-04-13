@@ -52,6 +52,7 @@ admin.post('/business-types', async (c) => {
 
 // PATCH /api/admin/business-types/:id
 admin.patch('/business-types/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
   const body = await c.req.json<{ name?: string; color?: string; sortOrder?: number; isActive?: boolean }>()
 
@@ -65,7 +66,7 @@ admin.patch('/business-types/:id', async (c) => {
     const [data] = await db
       .update(schema.businessTypes)
       .set(updateData)
-      .where(eq(schema.businessTypes.id, id))
+      .where(and(eq(schema.businessTypes.id, id), eq(schema.businessTypes.companyId, staff.companyId)))
       .returning()
 
     return c.json({ data })
@@ -76,6 +77,7 @@ admin.patch('/business-types/:id', async (c) => {
 
 // DELETE /api/admin/business-types/:id
 admin.delete('/business-types/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
 
   try {
@@ -83,11 +85,11 @@ admin.delete('/business-types/:id', async (c) => {
     await db
       .update(schema.stores)
       .set({ businessTypeId: null })
-      .where(eq(schema.stores.businessTypeId, id))
+      .where(and(eq(schema.stores.businessTypeId, id), eq(schema.stores.companyId, staff.companyId)))
 
     await db
       .delete(schema.businessTypes)
-      .where(eq(schema.businessTypes.id, id))
+      .where(and(eq(schema.businessTypes.id, id), eq(schema.businessTypes.companyId, staff.companyId)))
 
     return c.json({ data: { message: 'Deleted' } })
   } catch (e) {
@@ -134,6 +136,7 @@ admin.get('/stores', async (c) => {
 
 // PATCH /api/admin/stores/:id
 admin.patch('/stores/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
   const body = await c.req.json<{
     name?: string
@@ -161,10 +164,10 @@ admin.patch('/stores/:id', async (c) => {
       await db
         .update(schema.stores)
         .set(updateData)
-        .where(eq(schema.stores.id, id))
+        .where(and(eq(schema.stores.id, id), eq(schema.stores.companyId, staff.companyId)))
     }
 
-    // Update business hours (replace all)
+    // Update business hours (replace all) — only if store belongs to company
     if (body.businessHours !== undefined) {
       await db.delete(schema.storeBusinessHours).where(eq(schema.storeBusinessHours.storeId, id))
       if (body.businessHours.length > 0) {
@@ -180,7 +183,8 @@ admin.patch('/stores/:id', async (c) => {
     }
 
     // Return updated store with business hours
-    const [storeData] = await db.select().from(schema.stores).where(eq(schema.stores.id, id))
+    const [storeData] = await db.select().from(schema.stores).where(and(eq(schema.stores.id, id), eq(schema.stores.companyId, staff.companyId)))
+    if (!storeData) return c.json({ message: 'Store not found' }, 404)
     const businessHours = await db.select().from(schema.storeBusinessHours).where(eq(schema.storeBusinessHours.storeId, id))
 
     const data = { ...storeData, business_hours: businessHours }
@@ -391,6 +395,7 @@ admin.post('/reservations', async (c) => {
 
 // PATCH /api/admin/reservations/:id
 admin.patch('/reservations/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
   const body = await c.req.json<{ status: string }>()
 
@@ -403,7 +408,7 @@ admin.patch('/reservations/:id', async (c) => {
     const [data] = await db
       .update(schema.reservations)
       .set(updateData)
-      .where(eq(schema.reservations.id, id))
+      .where(and(eq(schema.reservations.id, id), eq(schema.reservations.companyId, staff.companyId)))
       .returning()
 
     return c.json({ data })
@@ -555,10 +560,11 @@ admin.patch('/menus/:id', async (c) => {
     if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder
     if (body.workloadPoints !== undefined) updateData.workloadPoints = String(body.workloadPoints)
 
+    const staff = c.get('staff')
     const [updated] = await db
       .update(schema.menus)
       .set(updateData)
-      .where(eq(schema.menus.id, id))
+      .where(and(eq(schema.menus.id, id), eq(schema.menus.companyId, staff.companyId)))
       .returning()
 
     // Fetch category for response
@@ -577,10 +583,11 @@ admin.patch('/menus/:id', async (c) => {
 
 // DELETE /api/admin/menus/:id
 admin.delete('/menus/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
 
   try {
-    await db.delete(schema.menus).where(eq(schema.menus.id, id))
+    await db.delete(schema.menus).where(and(eq(schema.menus.id, id), eq(schema.menus.companyId, staff.companyId)))
     return c.json({ data: { message: 'Deleted' } })
   } catch (e) {
     return c.json({ message: (e as Error).message }, 500)
@@ -709,6 +716,7 @@ admin.get('/staff', async (c) => {
 
 // PATCH /api/admin/staff/:id
 admin.patch('/staff/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
   const body = await c.req.json<{
     displayName?: string
@@ -728,7 +736,7 @@ admin.patch('/staff/:id', async (c) => {
     if (body.isActive !== undefined) updateData.isActive = body.isActive
 
     if (Object.keys(updateData).length > 0) {
-      await db.update(schema.staff).set(updateData).where(eq(schema.staff.id, id))
+      await db.update(schema.staff).set(updateData).where(and(eq(schema.staff.id, id), eq(schema.staff.companyId, staff.companyId)))
     }
 
     // Update specialties (replace all)
@@ -1051,6 +1059,17 @@ admin.post('/sales/import-paypay', async (c) => {
     return c.json({ message: 'Invalid request body' }, 400)
   }
 
+  // Verify storeId belongs to staff's company
+  const [targetStore] = await db
+    .select({ id: schema.stores.id })
+    .from(schema.stores)
+    .where(and(eq(schema.stores.id, body.storeId), eq(schema.stores.companyId, staff.companyId)))
+    .limit(1)
+
+  if (!targetStore) {
+    return c.json({ message: 'Store not found' }, 404)
+  }
+
   // Filter to completed transactions only
   const completedRows = body.rows.filter(
     (r) => r.status === '完了' || r.status === 'completed' || r.status === 'SUCCESS'
@@ -1136,6 +1155,7 @@ admin.get('/inventory/stock', async (c) => {
 
 // PATCH /api/admin/inventory/stock/:id
 admin.patch('/inventory/stock/:id', async (c) => {
+  const staff = c.get('staff')
   const id = c.req.param('id')
   const body = await c.req.json<{ quantity?: number; minQuantity?: number }>()
 
@@ -1150,7 +1170,7 @@ admin.patch('/inventory/stock/:id', async (c) => {
 
     const setFragment = sql.join(setClauses, sql`, `)
     const result = await db.execute(
-      sql`UPDATE inventory_stock SET ${setFragment} WHERE id = ${id} RETURNING *`
+      sql`UPDATE inventory_stock SET ${setFragment} WHERE id = ${id} AND company_id = ${staff.companyId} RETURNING *`
     )
     const rows = (result as unknown as { rows: unknown[] }).rows ?? result
     const data = Array.isArray(rows) ? rows[0] : rows
@@ -1344,7 +1364,7 @@ admin.patch('/attendances/:id', async (c) => {
     const [data] = await db
       .update(schema.attendances)
       .set(updateData)
-      .where(eq(schema.attendances.id, id))
+      .where(and(eq(schema.attendances.id, id), eq(schema.attendances.companyId, staff.companyId)))
       .returning()
 
     return c.json({ data })
