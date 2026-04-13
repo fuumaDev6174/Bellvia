@@ -26,12 +26,13 @@ export const ROLE_LABELS: Record<string, string> = {
   stylist: 'スタイリスト',
 }
 
-export const DAY_LABELS: Record<string, string> = {
-  mon: '月',
-  tue: '火',
-  wed: '水',
-  thu: '木',
-  fri: '金',
-  sat: '土',
-  sun: '日',
+// day_of_week: 0=Mon, 1=Tue, ..., 6=Sun
+export const DAY_LABELS: Record<number, string> = {
+  0: '月',
+  1: '火',
+  2: '水',
+  3: '木',
+  4: '金',
+  5: '土',
+  6: '日',
 }

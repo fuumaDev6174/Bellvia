@@ -86,10 +86,10 @@ export default function CustomerListPage() {
                       <td className="px-4 py-3 text-gray-700">{customer.phone ?? '-'}</td>
                       <td className="px-4 py-3 text-gray-700">{customer.email ?? '-'}</td>
                       <td className="px-4 py-3 text-right text-gray-700">
-                        {customer.visit_count ?? 0}
+                        {((customer as Record<string, unknown>).visit_count as number) ?? 0}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {customer.last_visit_at ? formatDateTimeJP(customer.last_visit_at) : '-'}
+                        {(customer as Record<string, unknown>).last_visit_at ? formatDateTimeJP((customer as Record<string, unknown>).last_visit_at as string) : '-'}
                       </td>
                       <td className="px-4 py-3 text-gray-700">{customer.source ?? '-'}</td>
                     </tr>

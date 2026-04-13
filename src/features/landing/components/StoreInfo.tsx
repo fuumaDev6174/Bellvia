@@ -1,13 +1,13 @@
 import { MapPin, Phone, Clock } from 'lucide-react'
 import { DAY_LABELS } from '@/lib/constants'
-import type { Store, BusinessHours } from '@/types/models'
+import type { Store } from '@/types/models'
 
 interface StoreInfoProps {
   store: Store
 }
 
 export function StoreInfo({ store }: StoreInfoProps) {
-  const hours = store.business_hours as BusinessHours | null
+  const hoursArray = (store as Record<string, unknown>).business_hours as Array<{ day_of_week: number; open_time: string; close_time: string }> | null
 
   return (
     <section className="py-16 bg-gray-50">
@@ -37,19 +37,19 @@ export function StoreInfo({ store }: StoreInfoProps) {
             )}
           </div>
 
-          {hours && (
+          {hoursArray && hoursArray.length > 0 && (
             <div className="flex items-start gap-3">
               <Clock className="h-5 w-5 text-primary-600 mt-0.5 shrink-0" />
               <div>
                 <p className="font-medium text-gray-900 mb-2">営業時間</p>
                 <dl className="space-y-1 text-sm">
-                  {Object.entries(DAY_LABELS).map(([key, label]) => {
-                    const day = hours[key]
+                  {Object.entries(DAY_LABELS).map(([dayNum, label]) => {
+                    const entry = hoursArray.find(h => h.day_of_week === Number(dayNum))
                     return (
-                      <div key={key} className="flex gap-4">
+                      <div key={dayNum} className="flex gap-4">
                         <dt className="w-8 font-medium text-gray-700">{label}</dt>
                         <dd className="text-gray-600">
-                          {day ? `${day.open} - ${day.close}` : '定休日'}
+                          {entry ? `${entry.open_time.slice(0, 5)} - ${entry.close_time.slice(0, 5)}` : '定休日'}
                         </dd>
                       </div>
                     )

@@ -7,7 +7,7 @@ const pub = new Hono()
 pub.get('/stores', async (c) => {
   const { data, error } = await supabaseAdmin
     .from('stores')
-    .select('*')
+    .select('*, business_hours:store_business_hours(*)')
     .eq('is_active', true)
     .order('name')
 
@@ -21,7 +21,7 @@ pub.get('/stores/:slug', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('stores')
-    .select('*')
+    .select('*, business_hours:store_business_hours(*)')
     .eq('slug', slug)
     .eq('is_active', true)
     .single()
@@ -39,7 +39,7 @@ pub.get('/stores/:storeId/menus', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('menus')
-    .select('*')
+    .select('*, category:category_id (id, name)')
     .eq('store_id', storeId)
     .eq('is_public', true)
     .order('sort_order')
@@ -54,13 +54,20 @@ pub.get('/stores/:storeId/stylists', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('staff')
-    .select('*')
+    .select('*, specialties:staff_specialties(specialty)')
     .eq('store_id', storeId)
     .eq('is_active', true)
     .order('sort_order')
 
   if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+
+  // Flatten specialties
+  const result = (data ?? []).map(s => ({
+    ...s,
+    specialties: ((s as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
+  }))
+
+  return c.json({ data: result })
 })
 
 // GET /api/public/stores/:storeId/available-slots

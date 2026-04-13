@@ -30,7 +30,8 @@ export function StaffFormModal({ isOpen, onClose, staff }: StaffFormModalProps) 
       setRole(staff.role)
       setPosition(staff.position ?? '')
       setBio(staff.bio ?? '')
-      setSpecialties(Array.isArray(staff.specialties) ? staff.specialties.join(', ') : '')
+      const staffAny = staff as Record<string, unknown>
+      setSpecialties(Array.isArray(staffAny.specialties) ? (staffAny.specialties as string[]).join(', ') : '')
       setIsActive(staff.is_active ?? true)
     }
   }, [isOpen, staff])
@@ -51,9 +52,9 @@ export function StaffFormModal({ isOpen, onClose, staff }: StaffFormModalProps) 
         role,
         position: position.trim() || null,
         bio: bio.trim() || null,
-        specialties: specialtiesArray.length > 0 ? specialtiesArray : [],
         is_active: isActive,
-      })
+        specialties: specialtiesArray.length > 0 ? specialtiesArray : [],
+      } as Parameters<typeof updateStaff.mutateAsync>[0] & { specialties: string[] })
       onClose()
     } catch {
       // Error handled by mutation onError

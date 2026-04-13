@@ -29,7 +29,7 @@ export default function MenuPage() {
 
   // Group menus by category
   const grouped = (menus ?? []).reduce<Record<string, typeof menus>>((acc, menu) => {
-    const cat = menu.category ?? 'その他'
+    const cat = ((menu as Record<string, unknown>).category as { name: string } | null)?.name ?? 'その他'
     if (!acc[cat]) acc[cat] = []
     acc[cat]!.push(menu)
     return acc

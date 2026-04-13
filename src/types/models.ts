@@ -43,10 +43,12 @@ export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number]
 export const PAYMENT_METHODS = ['cash', 'card', 'paypay', 'other'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
-export const MENU_CATEGORIES = ['カット', 'カラー', 'パーマ', 'トリートメント', 'スパ', 'その他'] as const
-export type MenuCategory = (typeof MENU_CATEGORIES)[number]
+export type MenuCategoryRecord = Database['public']['Tables']['menu_categories']['Row']
 
-// Business hours type
+// Business hours type (normalized)
+export type StoreBusinessHour = Database['public']['Tables']['store_business_hours']['Row']
+
+// Legacy helpers for converting store_business_hours array to day-keyed map
 export interface BusinessHourEntry {
   open: string
   close: string
@@ -73,6 +75,6 @@ export interface AvailableSlot {
 // Reservation with joined data (for admin views)
 export interface ReservationWithDetails extends Reservation {
   staff?: Pick<Staff, 'display_name' | 'photo_url'>
-  menu?: Pick<Menu, 'name' | 'price' | 'duration_min' | 'category'>
+  menu?: Pick<Menu, 'name' | 'price' | 'duration_min'> & { category?: { name: string } | null }
   customer?: Pick<Customer, 'name' | 'phone' | 'email'> | null
 }

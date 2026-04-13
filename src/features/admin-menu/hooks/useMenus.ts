@@ -21,7 +21,7 @@ export function useCreateMenu() {
   return useMutation({
     mutationFn: async (input: {
       name: string
-      category?: string | null
+      category_id?: string | null
       description?: string | null
       price: number
       duration_min: number
@@ -32,7 +32,7 @@ export function useCreateMenu() {
         method: 'POST',
         body: JSON.stringify({
           name: input.name,
-          category: input.category,
+          categoryId: input.category_id,
           description: input.description,
           price: input.price,
           durationMin: input.duration_min,
@@ -59,7 +59,7 @@ export function useUpdateMenu() {
         method: 'PATCH',
         body: JSON.stringify({
           name: input.name,
-          category: input.category,
+          categoryId: input.category_id,
           description: input.description,
           price: input.price,
           durationMin: input.duration_min,

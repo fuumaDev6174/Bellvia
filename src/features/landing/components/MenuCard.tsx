@@ -13,9 +13,9 @@ export function MenuCard({ menu }: MenuCardProps) {
         <div className="flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-gray-900">{menu.name}</h3>
-            {menu.category && (
-              <span className="text-xs text-primary-600 font-medium">{menu.category}</span>
-            )}
+            {(menu as Record<string, unknown>).category ? (
+              <span className="text-xs text-primary-600 font-medium">{((menu as Record<string, unknown>).category as { name: string }).name}</span>
+            ) : null}
             {menu.description && (
               <p className="mt-1 text-sm text-gray-500">{menu.description}</p>
             )}

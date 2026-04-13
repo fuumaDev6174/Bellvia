@@ -77,7 +77,9 @@ export default function MenuManagePage() {
                   <tr key={menu.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{menu.name}</td>
                     <td className="px-4 py-3">
-                      <Badge className="bg-primary-50 text-primary-700">{menu.category}</Badge>
+                      {(menu as Record<string, unknown>).category ? (
+                        <Badge className="bg-primary-50 text-primary-700">{((menu as Record<string, unknown>).category as { name: string }).name}</Badge>
+                      ) : <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatPrice(menu.price)}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{formatDuration(menu.duration_min)}</td>

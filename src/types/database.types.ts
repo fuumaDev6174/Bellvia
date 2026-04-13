@@ -45,7 +45,6 @@ export interface Database {
           slug: string
           address: string | null
           phone: string | null
-          business_hours: Json
           description: string | null
           image_url: string | null
           business_type_id: string | null
@@ -60,7 +59,6 @@ export interface Database {
           slug: string
           address?: string | null
           phone?: string | null
-          business_hours?: Json
           description?: string | null
           image_url?: string | null
           business_type_id?: string | null
@@ -75,12 +73,51 @@ export interface Database {
           slug?: string
           address?: string | null
           phone?: string | null
-          business_hours?: Json
           description?: string | null
           image_url?: string | null
           business_type_id?: string | null
           is_active?: boolean
           updated_at?: string
+        }
+      }
+      store_business_hours: {
+        Row: {
+          id: string
+          store_id: string
+          day_of_week: number
+          open_time: string
+          close_time: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          day_of_week: number
+          open_time: string
+          close_time: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          day_of_week?: number
+          open_time?: string
+          close_time?: string
+        }
+      }
+      staff_specialties: {
+        Row: {
+          id: string
+          staff_id: string
+          specialty: string
+        }
+        Insert: {
+          id?: string
+          staff_id: string
+          specialty: string
+        }
+        Update: {
+          id?: string
+          staff_id?: string
+          specialty?: string
         }
       }
       staff: {
@@ -93,7 +130,6 @@ export interface Database {
           role: string
           bio: string | null
           photo_url: string | null
-          specialties: string[]
           position: string | null
           sort_order: number
           is_active: boolean
@@ -109,7 +145,6 @@ export interface Database {
           role: string
           bio?: string | null
           photo_url?: string | null
-          specialties?: string[]
           position?: string | null
           sort_order?: number
           is_active?: boolean
@@ -125,11 +160,30 @@ export interface Database {
           role?: string
           bio?: string | null
           photo_url?: string | null
-          specialties?: string[]
           position?: string | null
           sort_order?: number
           is_active?: boolean
           updated_at?: string
+        }
+      }
+      menu_categories: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          sort_order?: number
         }
       }
       menus: {
@@ -138,7 +192,7 @@ export interface Database {
           store_id: string
           company_id: string
           name: string
-          category: string | null
+          category_id: string | null
           description: string | null
           price: number
           duration_min: number
@@ -154,7 +208,7 @@ export interface Database {
           store_id: string
           company_id: string
           name: string
-          category?: string | null
+          category_id?: string | null
           description?: string | null
           price: number
           duration_min: number
@@ -170,7 +224,7 @@ export interface Database {
           store_id?: string
           company_id?: string
           name?: string
-          category?: string | null
+          category_id?: string | null
           description?: string | null
           price?: number
           duration_min?: number
@@ -193,9 +247,6 @@ export interface Database {
           gender: string | null
           birthday: string | null
           notes: string | null
-          first_visit_at: string | null
-          last_visit_at: string | null
-          visit_count: number
           source: string | null
           created_at: string
           updated_at: string
@@ -211,9 +262,6 @@ export interface Database {
           gender?: string | null
           birthday?: string | null
           notes?: string | null
-          first_visit_at?: string | null
-          last_visit_at?: string | null
-          visit_count?: number
           source?: string | null
           created_at?: string
           updated_at?: string
@@ -229,9 +277,6 @@ export interface Database {
           gender?: string | null
           birthday?: string | null
           notes?: string | null
-          first_visit_at?: string | null
-          last_visit_at?: string | null
-          visit_count?: number
           source?: string | null
           updated_at?: string
         }

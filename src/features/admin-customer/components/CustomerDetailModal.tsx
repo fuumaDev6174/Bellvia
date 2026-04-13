@@ -51,12 +51,12 @@ export function CustomerDetailModal({ isOpen, onClose, customer }: CustomerDetai
           </div>
           <div>
             <span className="text-gray-500">来店回数</span>
-            <p className="font-medium text-gray-900">{customer.visit_count ?? 0}回</p>
+            <p className="font-medium text-gray-900">{((customer as Record<string, unknown>).visit_count as number) ?? 0}回</p>
           </div>
           <div>
             <span className="text-gray-500">最終来店日</span>
             <p className="font-medium text-gray-900">
-              {customer.last_visit_at ? formatDateTimeJP(customer.last_visit_at) : '-'}
+              {(customer as Record<string, unknown>).last_visit_at ? formatDateTimeJP((customer as Record<string, unknown>).last_visit_at as string) : '-'}
             </p>
           </div>
           <div>

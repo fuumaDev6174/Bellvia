@@ -1,16 +1,17 @@
 import { useState, useEffect, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
-import { MENU_CATEGORIES } from '@/types/models'
+import { api } from '@/lib/api'
 import { useCreateMenu, useUpdateMenu } from '../hooks/useMenus'
-import type { Menu } from '@/types/models'
+import type { Menu, MenuCategoryRecord } from '@/types/models'
 
 interface MenuFormModalProps {
   isOpen: boolean
   onClose: () => void
-  menu?: Menu | null
+  menu?: (Menu & { category?: { id: string; name: string } | null }) | null
 }
 
 export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
@@ -18,8 +19,13 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
   const updateMenu = useUpdateMenu()
   const isEdit = !!menu
 
+  const { data: categories } = useQuery<MenuCategoryRecord[]>({
+    queryKey: ['menu-categories'],
+    queryFn: () => api<MenuCategoryRecord[]>('/api/admin/menu-categories'),
+  })
+
   const [name, setName] = useState('')
-  const [category, setCategory] = useState<string>(MENU_CATEGORIES[0])
+  const [categoryId, setCategoryId] = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
   const [durationMin, setDurationMin] = useState('')
@@ -31,7 +37,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
     if (isOpen) {
       if (menu) {
         setName(menu.name)
-        setCategory(menu.category ?? MENU_CATEGORIES[0])
+        setCategoryId(menu.category_id ?? '')
         setDescription(menu.description ?? '')
         setPrice(String(menu.price))
         setDurationMin(String(menu.duration_min))
@@ -39,7 +45,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
         setIsPublic(menu.is_public ?? true)
       } else {
         setName('')
-        setCategory(MENU_CATEGORIES[0])
+        setCategoryId(categories?.[0]?.id ?? '')
         setDescription('')
         setPrice('')
         setDurationMin('')
@@ -48,7 +54,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
       }
       setErrors({})
     }
-  }, [isOpen, menu])
+  }, [isOpen, menu, categories])
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {}
@@ -65,7 +71,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
 
     const payload = {
       name: name.trim(),
-      category,
+      category_id: categoryId || null,
       description: description.trim() || null,
       price: Number(price),
       duration_min: Number(durationMin),
@@ -86,7 +92,7 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
   }
 
   const isSubmitting = createMenu.isPending || updateMenu.isPending
-  const categoryOptions = MENU_CATEGORIES.map((c) => ({ value: c, label: c }))
+  const categoryOptions = (categories ?? []).map((c) => ({ value: c.id, label: c.name }))
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? 'メニュー編集' : '新しいメニュー'} size="lg">
@@ -101,9 +107,10 @@ export function MenuFormModal({ isOpen, onClose, menu }: MenuFormModalProps) {
 
         <Select
           label="カテゴリ"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
           options={categoryOptions}
+          placeholder="カテゴリを選択"
         />
 
         <div>

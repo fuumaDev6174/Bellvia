@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, Badge, Select, Button, Input, Spinner } 
 import { MapPin, Phone, Clock, ExternalLink, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { formatPrice, formatDateTimeJP } from '@/lib/utils'
 import { TIMEZONE } from '@/lib/constants'
-import type { Store, Staff, Customer, BusinessHours, BusinessHourEntry } from '@/types/models'
+import type { Store, Staff, Customer } from '@/types/models'
 
 interface BusinessType { id: string; name: string; color: string }
 interface StoreWithType extends Store { business_type?: BusinessType | null }
@@ -180,7 +180,7 @@ function OverviewTab({ store }: { store: StoreWithType }) {
     setIsEditing(true)
   }
 
-  const hours = store.business_hours as BusinessHours | null
+  const hoursArray = (store as unknown as Record<string, unknown>).business_hours as Array<{ day_of_week: number; open_time: string; close_time: string }> | null
 
   return (
     <div className="space-y-6">
@@ -238,12 +238,12 @@ function OverviewTab({ store }: { store: StoreWithType }) {
               <Clock className="h-4 w-4" /> 営業時間
             </h3>
             <div className="grid grid-cols-7 gap-1">
-              {Object.entries(DAY_LABELS).map(([key, label]) => {
-                const entry = hours?.[key] as BusinessHourEntry | null | undefined
+              {Object.entries(DAY_LABELS).map(([dayNum, label]) => {
+                const entry = hoursArray?.find(h => h.day_of_week === Number(dayNum))
                 return (
-                  <div key={key} className={`rounded-lg p-2 text-center text-xs ${entry ? 'bg-primary-50 text-primary-700' : 'bg-gray-100 text-gray-400'}`}>
+                  <div key={dayNum} className={`rounded-lg p-2 text-center text-xs ${entry ? 'bg-primary-50 text-primary-700' : 'bg-gray-100 text-gray-400'}`}>
                     <div className="font-medium">{label}</div>
-                    {entry ? (<><div>{entry.open}</div><div>〜</div><div>{entry.close}</div></>) : <div className="mt-1">定休</div>}
+                    {entry ? (<><div>{entry.open_time.slice(0, 5)}</div><div>〜</div><div>{entry.close_time.slice(0, 5)}</div></>) : <div className="mt-1">定休</div>}
                   </div>
                 )
               })}
@@ -375,8 +375,8 @@ function CustomerTab({ storeId }: { storeId: string }) {
                   <td className="px-4 py-3 font-medium">{c.name}</td>
                   <td className="px-4 py-3 text-gray-500">{c.name_kana ?? '-'}</td>
                   <td className="px-4 py-3">{c.phone ?? '-'}</td>
-                  <td className="px-4 py-3">{c.visit_count}回</td>
-                  <td className="px-4 py-3">{c.last_visit_at ? formatDateTimeJP(c.last_visit_at) : '-'}</td>
+                  <td className="px-4 py-3">{((c as Record<string, unknown>).visit_count as number) ?? 0}回</td>
+                  <td className="px-4 py-3">{(c as Record<string, unknown>).last_visit_at ? formatDateTimeJP((c as Record<string, unknown>).last_visit_at as string) : '-'}</td>
                   <td className="px-4 py-3 text-gray-500">{c.source ?? '-'}</td>
                 </tr>
               ))}

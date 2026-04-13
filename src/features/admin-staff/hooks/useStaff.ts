@@ -27,7 +27,7 @@ export function useUpdateStaff() {
           role: input.role,
           position: input.position,
           bio: input.bio,
-          specialties: input.specialties,
+          specialties: (input as Record<string, unknown>).specialties,
           isActive: input.is_active,
         }),
       }),

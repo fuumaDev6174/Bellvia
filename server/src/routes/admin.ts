@@ -92,7 +92,7 @@ admin.get('/stores', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('stores')
-    .select('*, business_type:business_type_id (id, name, color)')
+    .select('*, business_type:business_type_id (id, name, color), business_hours:store_business_hours(*)')
     .eq('company_id', staff.companyId)
     .order('name')
 
@@ -109,7 +109,7 @@ admin.patch('/stores/:id', async (c) => {
     address?: string
     phone?: string
     description?: string
-    businessHours?: unknown
+    businessHours?: Array<{ day_of_week: number; open_time: string; close_time: string }>
     businessTypeId?: string | null
     isActive?: boolean
   }>()
@@ -120,18 +120,38 @@ admin.patch('/stores/:id', async (c) => {
   if (body.address !== undefined) updateData.address = body.address
   if (body.phone !== undefined) updateData.phone = body.phone
   if (body.description !== undefined) updateData.description = body.description
-  if (body.businessHours !== undefined) updateData.business_hours = body.businessHours
   if (body.businessTypeId !== undefined) updateData.business_type_id = body.businessTypeId
   if (body.isActive !== undefined) updateData.is_active = body.isActive
 
-  const { data, error } = await supabaseAdmin
+  // Update store fields
+  if (Object.keys(updateData).length > 0) {
+    const { error } = await supabaseAdmin
+      .from('stores')
+      .update(updateData)
+      .eq('id', id)
+
+    if (error) return c.json({ message: error.message }, 500)
+  }
+
+  // Update business hours (replace all)
+  if (body.businessHours !== undefined) {
+    await supabaseAdmin.from('store_business_hours').delete().eq('store_id', id)
+    if (body.businessHours.length > 0) {
+      const { error: hoursError } = await supabaseAdmin
+        .from('store_business_hours')
+        .insert(body.businessHours.map(h => ({ store_id: id, ...h })))
+      if (hoursError) return c.json({ message: hoursError.message }, 500)
+    }
+  }
+
+  // Return updated store with business hours
+  const { data, error: fetchError } = await supabaseAdmin
     .from('stores')
-    .update(updateData)
+    .select('*, business_hours:store_business_hours(*)')
     .eq('id', id)
-    .select()
     .single()
 
-  if (error) return c.json({ message: error.message }, 500)
+  if (fetchError) return c.json({ message: fetchError.message }, 500)
   return c.json({ data })
 })
 
@@ -156,7 +176,7 @@ admin.get('/dashboard/stats', async (c) => {
       .select(`
         *,
         staff:staff_id (display_name, photo_url),
-        menu:menu_id (name, price, duration_min, category),
+        menu:menu_id (name, price, duration_min, category:category_id (name)),
         customer:customer_id (name, phone, email)
       `)
       .eq('store_id', staff.storeId)
@@ -206,7 +226,7 @@ admin.get('/reservations', async (c) => {
     .select(`
       *,
       staff:staff_id (display_name, photo_url),
-      menu:menu_id (name, price, duration_min, category),
+      menu:menu_id (name, price, duration_min, category:category_id (name)),
       customer:customer_id (name, phone, email)
     `)
     .eq('store_id', storeId)
@@ -280,6 +300,37 @@ admin.patch('/reservations/:id', async (c) => {
   return c.json({ data })
 })
 
+// ---------- Menu Categories ----------
+
+// GET /api/admin/menu-categories
+admin.get('/menu-categories', async (c) => {
+  const staff = c.get('staff')
+
+  const { data, error } = await supabaseAdmin
+    .from('menu_categories')
+    .select('*')
+    .eq('company_id', staff.companyId)
+    .order('sort_order')
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// POST /api/admin/menu-categories
+admin.post('/menu-categories', async (c) => {
+  const staff = c.get('staff')
+  const body = await c.req.json<{ name: string; sortOrder?: number }>()
+
+  const { data, error } = await supabaseAdmin
+    .from('menu_categories')
+    .insert({ company_id: staff.companyId, name: body.name, sort_order: body.sortOrder ?? 0 })
+    .select()
+    .single()
+
+  if (error) return c.json({ message: error.message }, 500)
+  return c.json({ data }, 201)
+})
+
 // ---------- Menus ----------
 
 // GET /api/admin/menus
@@ -289,7 +340,7 @@ admin.get('/menus', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('menus')
-    .select('*')
+    .select('*, category:category_id (id, name)')
     .eq('store_id', storeId)
     .order('sort_order')
 
@@ -302,7 +353,7 @@ admin.post('/menus', async (c) => {
   const staff = c.get('staff')
   const body = await c.req.json<{
     name: string
-    category?: string
+    categoryId?: string | null
     description?: string
     price: number
     durationMin: number
@@ -317,7 +368,7 @@ admin.post('/menus', async (c) => {
       store_id: staff.storeId,
       company_id: staff.companyId,
       name: body.name,
-      category: body.category ?? null,
+      category_id: body.categoryId ?? null,
       description: body.description ?? null,
       price: body.price,
       duration_min: body.durationMin,
@@ -325,7 +376,7 @@ admin.post('/menus', async (c) => {
       sort_order: body.sortOrder ?? 0,
       workload_points: body.workloadPoints ?? 1.0,
     })
-    .select()
+    .select('*, category:category_id (id, name)')
     .single()
 
   if (error) return c.json({ message: error.message }, 500)
@@ -337,7 +388,7 @@ admin.patch('/menus/:id', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json<{
     name?: string
-    category?: string
+    categoryId?: string | null
     description?: string
     price?: number
     durationMin?: number
@@ -348,7 +399,7 @@ admin.patch('/menus/:id', async (c) => {
 
   const updateData: Record<string, unknown> = {}
   if (body.name !== undefined) updateData.name = body.name
-  if (body.category !== undefined) updateData.category = body.category
+  if (body.categoryId !== undefined) updateData.category_id = body.categoryId
   if (body.description !== undefined) updateData.description = body.description
   if (body.price !== undefined) updateData.price = body.price
   if (body.durationMin !== undefined) updateData.duration_min = body.durationMin
@@ -360,7 +411,7 @@ admin.patch('/menus/:id', async (c) => {
     .from('menus')
     .update(updateData)
     .eq('id', id)
-    .select()
+    .select('*, category:category_id (id, name)')
     .single()
 
   if (error) return c.json({ message: error.message }, 500)
@@ -450,7 +501,7 @@ admin.get('/staff', async (c) => {
 
   let query = supabaseAdmin
     .from('staff')
-    .select('*')
+    .select('*, specialties:staff_specialties(specialty)')
     .eq('store_id', storeId)
     .order('sort_order')
 
@@ -459,7 +510,14 @@ admin.get('/staff', async (c) => {
 
   const { data, error } = await query
   if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+
+  // Flatten specialties from [{specialty: "カット"}] to ["カット"]
+  const result = (data ?? []).map(s => ({
+    ...s,
+    specialties: ((s as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
+  }))
+
+  return c.json({ data: result })
 })
 
 // PATCH /api/admin/staff/:id
@@ -479,18 +537,37 @@ admin.patch('/staff/:id', async (c) => {
   if (body.role !== undefined) updateData.role = body.role
   if (body.position !== undefined) updateData.position = body.position
   if (body.bio !== undefined) updateData.bio = body.bio
-  if (body.specialties !== undefined) updateData.specialties = body.specialties
   if (body.isActive !== undefined) updateData.is_active = body.isActive
 
-  const { data, error } = await supabaseAdmin
+  if (Object.keys(updateData).length > 0) {
+    const { error } = await supabaseAdmin.from('staff').update(updateData).eq('id', id)
+    if (error) return c.json({ message: error.message }, 500)
+  }
+
+  // Update specialties (replace all)
+  if (body.specialties !== undefined) {
+    await supabaseAdmin.from('staff_specialties').delete().eq('staff_id', id)
+    if (body.specialties.length > 0) {
+      const { error: spError } = await supabaseAdmin
+        .from('staff_specialties')
+        .insert(body.specialties.map(s => ({ staff_id: id, specialty: s })))
+      if (spError) return c.json({ message: spError.message }, 500)
+    }
+  }
+
+  const { data, error: fetchError } = await supabaseAdmin
     .from('staff')
-    .update(updateData)
+    .select('*, specialties:staff_specialties(specialty)')
     .eq('id', id)
-    .select()
     .single()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+  if (fetchError) return c.json({ message: fetchError.message }, 500)
+
+  const result = {
+    ...data,
+    specialties: ((data as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
+  }
+  return c.json({ data: result })
 })
 
 // ---------- Customers ----------
@@ -516,9 +593,8 @@ admin.get('/customers', async (c) => {
 
     let query = supabaseAdmin
       .from('customers')
-      .select('*')
+      .select('*, stats:customer_stats!customer_stats_customer_id_fkey(visit_count, first_visit_at, last_visit_at)')
       .in('id', customerIds)
-      .order('last_visit_at', { ascending: false, nullsFirst: false })
 
     if (search && search.trim()) {
       const term = `%${search.trim()}%`
@@ -527,15 +603,26 @@ admin.get('/customers', async (c) => {
 
     const { data, error } = await query
     if (error) return c.json({ message: error.message }, 500)
-    return c.json({ data: data ?? [] })
+
+    // Flatten stats into customer object for backward compatibility
+    const result = (data ?? []).map(c => {
+      const s = (c as Record<string, unknown>).stats as { visit_count: number; first_visit_at: string | null; last_visit_at: string | null } | null
+      return { ...c, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null, stats: undefined }
+    }).sort((a, b) => {
+      if (!a.last_visit_at && !b.last_visit_at) return 0
+      if (!a.last_visit_at) return 1
+      if (!b.last_visit_at) return -1
+      return b.last_visit_at.localeCompare(a.last_visit_at)
+    })
+
+    return c.json({ data: result })
   }
 
   // No storeId: return all company customers
   let query = supabaseAdmin
     .from('customers')
-    .select('*')
+    .select('*, stats:customer_stats!customer_stats_customer_id_fkey(visit_count, first_visit_at, last_visit_at)')
     .eq('company_id', staff.companyId)
-    .order('last_visit_at', { ascending: false, nullsFirst: false })
 
   if (search && search.trim()) {
     const term = `%${search.trim()}%`
@@ -544,7 +631,18 @@ admin.get('/customers', async (c) => {
 
   const { data, error } = await query
   if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+
+  const result = (data ?? []).map(c => {
+    const s = (c as Record<string, unknown>).stats as { visit_count: number; first_visit_at: string | null; last_visit_at: string | null } | null
+    return { ...c, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null, stats: undefined }
+  }).sort((a, b) => {
+    if (!a.last_visit_at && !b.last_visit_at) return 0
+    if (!a.last_visit_at) return 1
+    if (!b.last_visit_at) return -1
+    return b.last_visit_at.localeCompare(a.last_visit_at)
+  })
+
+  return c.json({ data: result })
 })
 
 // GET /api/admin/customers/:id/reservations
@@ -556,7 +654,7 @@ admin.get('/customers/:id/reservations', async (c) => {
     .select(`
       *,
       staff:staff_id (display_name, photo_url),
-      menu:menu_id (name, price, duration_min, category)
+      menu:menu_id (name, price, duration_min, category:category_id (name))
     `)
     .eq('customer_id', customerId)
     .order('start_at', { ascending: false })

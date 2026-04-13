@@ -80,8 +80,8 @@ export default function StaffManagePage() {
                     <td className="px-4 py-3 text-gray-700">{staff.position ?? '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {Array.isArray(staff.specialties) && staff.specialties.length > 0 ? (
-                          staff.specialties.map((s: string) => (
+                        {Array.isArray((staff as Record<string, unknown>).specialties) && ((staff as Record<string, unknown>).specialties as string[]).length > 0 ? (
+                          ((staff as Record<string, unknown>).specialties as string[]).map((s: string) => (
                             <Badge key={s} className="bg-gray-100 text-gray-700">
                               {s}
                             </Badge>

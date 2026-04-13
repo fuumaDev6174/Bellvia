@@ -28,9 +28,9 @@ export function StylistCard({ stylist, storeSlug }: StylistCardProps) {
         {stylist.bio && (
           <p className="mt-2 text-sm text-gray-500 line-clamp-3">{stylist.bio}</p>
         )}
-        {stylist.specialties.length > 0 && (
+        {Array.isArray((stylist as Record<string, unknown>).specialties) && ((stylist as Record<string, unknown>).specialties as string[]).length > 0 && (
           <div className="mt-3 flex flex-wrap justify-center gap-1">
-            {stylist.specialties.map((s) => (
+            {((stylist as Record<string, unknown>).specialties as string[]).map((s: string) => (
               <span key={s} className="rounded-full bg-primary-50 px-2 py-0.5 text-xs text-primary-700">
                 {s}
               </span>
