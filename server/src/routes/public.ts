@@ -1,17 +1,36 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../lib/supabase.js'
+import { eq, and, sql } from 'drizzle-orm'
+import { db } from '../db/index.js'
+import {
+  stores,
+  storeBusinessHours,
+  menus,
+  menuCategories,
+  staff,
+  staffSpecialties,
+} from '../db/schema.js'
 
 const pub = new Hono()
 
 // GET /api/public/stores
 pub.get('/stores', async (c) => {
-  const { data, error } = await supabaseAdmin
-    .from('stores')
-    .select('*, business_hours:store_business_hours(*)')
-    .eq('is_active', true)
-    .order('name')
+  const storeRows = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.isActive, true))
+    .orderBy(stores.name)
 
-  if (error) return c.json({ message: error.message }, 500)
+  // Attach business hours
+  const storeIds = storeRows.map(s => s.id)
+  const hours = storeIds.length > 0
+    ? await db.select().from(storeBusinessHours).where(sql`${storeBusinessHours.storeId} IN ${storeIds}`)
+    : []
+
+  const data = storeRows.map(s => ({
+    ...s,
+    business_hours: hours.filter(h => h.storeId === s.id),
+  }))
+
   return c.json({ data })
 })
 
@@ -19,32 +38,69 @@ pub.get('/stores', async (c) => {
 pub.get('/stores/:slug', async (c) => {
   const slug = c.req.param('slug')
 
-  const { data, error } = await supabaseAdmin
-    .from('stores')
-    .select('*, business_hours:store_business_hours(*)')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
+  const [store] = await db
+    .select()
+    .from(stores)
+    .where(and(eq(stores.slug, slug), eq(stores.isActive, true)))
+    .limit(1)
 
-  if (error) {
-    if (error.code === 'PGRST116') return c.json({ message: 'Store not found' }, 404)
-    return c.json({ message: error.message }, 500)
+  if (!store) {
+    return c.json({ message: 'Store not found' }, 404)
   }
-  return c.json({ data })
+
+  const hours = await db
+    .select()
+    .from(storeBusinessHours)
+    .where(eq(storeBusinessHours.storeId, store.id))
+
+  return c.json({ data: { ...store, business_hours: hours } })
 })
 
 // GET /api/public/stores/:storeId/menus
 pub.get('/stores/:storeId/menus', async (c) => {
   const storeId = c.req.param('storeId')
 
-  const { data, error } = await supabaseAdmin
-    .from('menus')
-    .select('*, category:category_id (id, name)')
-    .eq('store_id', storeId)
-    .eq('is_public', true)
-    .order('sort_order')
+  const rows = await db
+    .select({
+      id: menus.id,
+      storeId: menus.storeId,
+      companyId: menus.companyId,
+      name: menus.name,
+      categoryId: menus.categoryId,
+      description: menus.description,
+      price: menus.price,
+      durationMin: menus.durationMin,
+      imageUrl: menus.imageUrl,
+      isPublic: menus.isPublic,
+      sortOrder: menus.sortOrder,
+      workloadPoints: menus.workloadPoints,
+      createdAt: menus.createdAt,
+      updatedAt: menus.updatedAt,
+      categoryName: menuCategories.name,
+    })
+    .from(menus)
+    .leftJoin(menuCategories, eq(menus.categoryId, menuCategories.id))
+    .where(and(eq(menus.storeId, storeId), eq(menus.isPublic, true)))
+    .orderBy(menus.sortOrder)
 
-  if (error) return c.json({ message: error.message }, 500)
+  const data = rows.map(r => ({
+    id: r.id,
+    store_id: r.storeId,
+    company_id: r.companyId,
+    name: r.name,
+    category_id: r.categoryId,
+    category: r.categoryId ? { id: r.categoryId, name: r.categoryName } : null,
+    description: r.description,
+    price: r.price,
+    duration_min: r.durationMin,
+    image_url: r.imageUrl,
+    is_public: r.isPublic,
+    sort_order: r.sortOrder,
+    workload_points: r.workloadPoints,
+    created_at: r.createdAt,
+    updated_at: r.updatedAt,
+  }))
+
   return c.json({ data })
 })
 
@@ -52,22 +108,24 @@ pub.get('/stores/:storeId/menus', async (c) => {
 pub.get('/stores/:storeId/stylists', async (c) => {
   const storeId = c.req.param('storeId')
 
-  const { data, error } = await supabaseAdmin
-    .from('staff')
-    .select('*, specialties:staff_specialties(specialty)')
-    .eq('store_id', storeId)
-    .eq('is_active', true)
-    .order('sort_order')
+  const staffRows = await db
+    .select()
+    .from(staff)
+    .where(and(eq(staff.storeId, storeId), eq(staff.isActive, true)))
+    .orderBy(staff.sortOrder)
 
-  if (error) return c.json({ message: error.message }, 500)
+  // Attach specialties
+  const staffIds = staffRows.map(s => s.id)
+  const specs = staffIds.length > 0
+    ? await db.select().from(staffSpecialties).where(sql`${staffSpecialties.staffId} IN ${staffIds}`)
+    : []
 
-  // Flatten specialties
-  const result = (data ?? []).map(s => ({
+  const data = staffRows.map(s => ({
     ...s,
-    specialties: ((s as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
+    specialties: specs.filter(sp => sp.staffId === s.id).map(sp => sp.specialty),
   }))
 
-  return c.json({ data: result })
+  return c.json({ data })
 })
 
 // GET /api/public/stores/:storeId/available-slots
@@ -81,16 +139,17 @@ pub.get('/stores/:storeId/available-slots', async (c) => {
     return c.json({ message: 'date and menuId are required' }, 400)
   }
 
-  const params: Record<string, string> = {
-    p_store_id: storeId,
-    p_date: date,
-    p_menu_id: menuId,
-  }
-  if (staffId) params.p_staff_id = staffId
+  const result = await db.execute(sql`
+    SELECT get_available_slots(
+      ${storeId}::uuid,
+      ${date}::date,
+      ${menuId}::uuid,
+      ${staffId ? staffId : null}::uuid
+    )
+  `)
 
-  const { data, error } = await supabaseAdmin.rpc('get_available_slots', params)
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+  const data = (result as unknown as Array<{ get_available_slots: unknown }>)[0]?.get_available_slots ?? []
+  return c.json({ data })
 })
 
 // POST /api/public/reservations
@@ -106,20 +165,26 @@ pub.post('/reservations', async (c) => {
     notes?: string
   }>()
 
-  const params: Record<string, string> = {
-    p_store_id: body.storeId,
-    p_staff_id: body.staffId,
-    p_menu_id: body.menuId,
-    p_start_at: body.startAt,
-    p_guest_name: body.guestName,
-    p_guest_phone: body.guestPhone,
-  }
-  if (body.guestEmail) params.p_guest_email = body.guestEmail
-  if (body.notes) params.p_notes = body.notes
+  try {
+    const result = await db.execute(sql`
+      SELECT create_guest_reservation(
+        ${body.storeId}::uuid,
+        ${body.staffId}::uuid,
+        ${body.menuId}::uuid,
+        ${body.startAt}::timestamptz,
+        ${body.guestName}::text,
+        ${body.guestPhone}::text,
+        ${body.guestEmail ?? null}::text,
+        ${body.notes ?? null}::text
+      )
+    `)
 
-  const { data, error } = await supabaseAdmin.rpc('create_guest_reservation', params)
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
+    const data = (result as unknown as Array<{ create_guest_reservation: unknown }>)[0]?.create_guest_reservation
+    return c.json({ data }, 201)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Reservation failed'
+    return c.json({ message }, 500)
+  }
 })
 
 export { pub }

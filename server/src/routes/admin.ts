@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
-import { supabaseAdmin } from '../lib/supabase.js'
+import { db } from '../db/index.js'
+import { eq, and, sql, desc, asc, inArray, ilike, or, count, gte, lte } from 'drizzle-orm'
+import * as schema from '../db/schema.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 const admin = new Hono()
@@ -13,14 +15,17 @@ admin.use('*', authMiddleware)
 admin.get('/business-types', async (c) => {
   const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('business_types')
-    .select('*')
-    .eq('company_id', staff.companyId)
-    .order('sort_order')
+  try {
+    const data = await db
+      .select()
+      .from(schema.businessTypes)
+      .where(eq(schema.businessTypes.companyId, staff.companyId))
+      .orderBy(asc(schema.businessTypes.sortOrder))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // POST /api/admin/business-types
@@ -28,19 +33,21 @@ admin.post('/business-types', async (c) => {
   const staff = c.get('staff')
   const body = await c.req.json<{ name: string; color?: string; sortOrder?: number }>()
 
-  const { data, error } = await supabaseAdmin
-    .from('business_types')
-    .insert({
-      company_id: staff.companyId,
-      name: body.name,
-      color: body.color ?? '#6366f1',
-      sort_order: body.sortOrder ?? 0,
-    })
-    .select()
-    .single()
+  try {
+    const [data] = await db
+      .insert(schema.businessTypes)
+      .values({
+        companyId: staff.companyId,
+        name: body.name,
+        color: body.color ?? '#6366f1',
+        sortOrder: body.sortOrder ?? 0,
+      })
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
+    return c.json({ data }, 201)
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/business-types/:id
@@ -51,37 +58,41 @@ admin.patch('/business-types/:id', async (c) => {
   const updateData: Record<string, unknown> = {}
   if (body.name !== undefined) updateData.name = body.name
   if (body.color !== undefined) updateData.color = body.color
-  if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder
-  if (body.isActive !== undefined) updateData.is_active = body.isActive
+  if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder
+  if (body.isActive !== undefined) updateData.isActive = body.isActive
 
-  const { data, error } = await supabaseAdmin
-    .from('business_types')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
+  try {
+    const [data] = await db
+      .update(schema.businessTypes)
+      .set(updateData)
+      .where(eq(schema.businessTypes.id, id))
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // DELETE /api/admin/business-types/:id
 admin.delete('/business-types/:id', async (c) => {
   const id = c.req.param('id')
 
-  // Unlink stores first
-  await supabaseAdmin
-    .from('stores')
-    .update({ business_type_id: null })
-    .eq('business_type_id', id)
+  try {
+    // Unlink stores first
+    await db
+      .update(schema.stores)
+      .set({ businessTypeId: null })
+      .where(eq(schema.stores.businessTypeId, id))
 
-  const { error } = await supabaseAdmin
-    .from('business_types')
-    .delete()
-    .eq('id', id)
+    await db
+      .delete(schema.businessTypes)
+      .where(eq(schema.businessTypes.id, id))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: { message: 'Deleted' } })
+    return c.json({ data: { message: 'Deleted' } })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Stores ----------
@@ -90,14 +101,35 @@ admin.delete('/business-types/:id', async (c) => {
 admin.get('/stores', async (c) => {
   const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('stores')
-    .select('*, business_type:business_type_id (id, name, color), business_hours:store_business_hours(*)')
-    .eq('company_id', staff.companyId)
-    .order('name')
+  try {
+    const storesData = await db
+      .select()
+      .from(schema.stores)
+      .where(eq(schema.stores.companyId, staff.companyId))
+      .orderBy(asc(schema.stores.name))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    // Fetch business types and business hours for all stores
+    const storeIds = storesData.map(s => s.id)
+
+    const [businessTypesData, businessHoursData] = await Promise.all([
+      db.select().from(schema.businessTypes).where(eq(schema.businessTypes.companyId, staff.companyId)),
+      storeIds.length > 0
+        ? db.select().from(schema.storeBusinessHours).where(inArray(schema.storeBusinessHours.storeId, storeIds))
+        : Promise.resolve([]),
+    ])
+
+    const btMap = new Map(businessTypesData.map(bt => [bt.id, bt]))
+
+    const data = storesData.map(store => ({
+      ...store,
+      business_type: store.businessTypeId ? btMap.get(store.businessTypeId) ?? null : null,
+      business_hours: businessHoursData.filter(bh => bh.storeId === store.id),
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/stores/:id
@@ -114,45 +146,48 @@ admin.patch('/stores/:id', async (c) => {
     isActive?: boolean
   }>()
 
-  const updateData: Record<string, unknown> = {}
-  if (body.name !== undefined) updateData.name = body.name
-  if (body.slug !== undefined) updateData.slug = body.slug
-  if (body.address !== undefined) updateData.address = body.address
-  if (body.phone !== undefined) updateData.phone = body.phone
-  if (body.description !== undefined) updateData.description = body.description
-  if (body.businessTypeId !== undefined) updateData.business_type_id = body.businessTypeId
-  if (body.isActive !== undefined) updateData.is_active = body.isActive
+  try {
+    const updateData: Record<string, unknown> = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.slug !== undefined) updateData.slug = body.slug
+    if (body.address !== undefined) updateData.address = body.address
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.description !== undefined) updateData.description = body.description
+    if (body.businessTypeId !== undefined) updateData.businessTypeId = body.businessTypeId
+    if (body.isActive !== undefined) updateData.isActive = body.isActive
 
-  // Update store fields
-  if (Object.keys(updateData).length > 0) {
-    const { error } = await supabaseAdmin
-      .from('stores')
-      .update(updateData)
-      .eq('id', id)
-
-    if (error) return c.json({ message: error.message }, 500)
-  }
-
-  // Update business hours (replace all)
-  if (body.businessHours !== undefined) {
-    await supabaseAdmin.from('store_business_hours').delete().eq('store_id', id)
-    if (body.businessHours.length > 0) {
-      const { error: hoursError } = await supabaseAdmin
-        .from('store_business_hours')
-        .insert(body.businessHours.map(h => ({ store_id: id, ...h })))
-      if (hoursError) return c.json({ message: hoursError.message }, 500)
+    // Update store fields
+    if (Object.keys(updateData).length > 0) {
+      await db
+        .update(schema.stores)
+        .set(updateData)
+        .where(eq(schema.stores.id, id))
     }
+
+    // Update business hours (replace all)
+    if (body.businessHours !== undefined) {
+      await db.delete(schema.storeBusinessHours).where(eq(schema.storeBusinessHours.storeId, id))
+      if (body.businessHours.length > 0) {
+        await db.insert(schema.storeBusinessHours).values(
+          body.businessHours.map(h => ({
+            storeId: id,
+            dayOfWeek: h.day_of_week,
+            openTime: h.open_time,
+            closeTime: h.close_time,
+          }))
+        )
+      }
+    }
+
+    // Return updated store with business hours
+    const [storeData] = await db.select().from(schema.stores).where(eq(schema.stores.id, id))
+    const businessHours = await db.select().from(schema.storeBusinessHours).where(eq(schema.storeBusinessHours.storeId, id))
+
+    const data = { ...storeData, business_hours: businessHours }
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  // Return updated store with business hours
-  const { data, error: fetchError } = await supabaseAdmin
-    .from('stores')
-    .select('*, business_hours:store_business_hours(*)')
-    .eq('id', id)
-    .single()
-
-  if (fetchError) return c.json({ message: fetchError.message }, 500)
-  return c.json({ data })
 })
 
 // ---------- Dashboard ----------
@@ -168,46 +203,86 @@ admin.get('/dashboard/stats', async (c) => {
   weekEndDate.setDate(now.getDate() + (7 - now.getDay()))
   const weekEnd = weekEndDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
 
-  // Run 3 queries in parallel
-  const [todayRes, weekRes, customerRes] = await Promise.all([
-    // Today's reservations with details
-    supabaseAdmin
-      .from('reservations')
-      .select(`
-        *,
-        staff:staff_id (display_name, photo_url),
-        menu:menu_id (name, price, duration_min, category:category_id (name)),
-        customer:customer_id (name, phone, email)
-      `)
-      .eq('store_id', staff.storeId)
-      .gte('start_at', `${today}T00:00:00`)
-      .lte('start_at', `${today}T23:59:59`)
-      .order('start_at', { ascending: true }),
+  try {
+    // Run 3 queries in parallel
+    const [todayReservationsRaw, weekCountResult, customerCountResult] = await Promise.all([
+      // Today's reservations
+      db
+        .select()
+        .from(schema.reservations)
+        .where(
+          and(
+            eq(schema.reservations.storeId, staff.storeId),
+            gte(schema.reservations.startAt, new Date(`${today}T00:00:00`)),
+            lte(schema.reservations.startAt, new Date(`${today}T23:59:59`))
+          )
+        )
+        .orderBy(asc(schema.reservations.startAt)),
 
-    // Week reservation count
-    supabaseAdmin
-      .from('reservations')
-      .select('*', { count: 'exact', head: true })
-      .eq('store_id', staff.storeId)
-      .gte('start_at', `${today}T00:00:00`)
-      .lte('start_at', `${weekEnd}T23:59:59`),
+      // Week reservation count
+      db
+        .select({ count: count() })
+        .from(schema.reservations)
+        .where(
+          and(
+            eq(schema.reservations.storeId, staff.storeId),
+            gte(schema.reservations.startAt, new Date(`${today}T00:00:00`)),
+            lte(schema.reservations.startAt, new Date(`${weekEnd}T23:59:59`))
+          )
+        ),
 
-    // Customer count
-    supabaseAdmin
-      .from('customers')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', staff.companyId),
-  ])
+      // Customer count
+      db
+        .select({ count: count() })
+        .from(schema.customers)
+        .where(eq(schema.customers.companyId, staff.companyId)),
+    ])
 
-  if (todayRes.error) return c.json({ message: todayRes.error.message }, 500)
+    // Enrich today's reservations with staff, menu, customer data
+    const staffIds = [...new Set(todayReservationsRaw.map(r => r.staffId).filter(Boolean))]
+    const menuIds = [...new Set(todayReservationsRaw.map(r => r.menuId).filter(Boolean))]
+    const customerIds = [...new Set(todayReservationsRaw.map(r => r.customerId).filter(Boolean))] as string[]
 
-  return c.json({
-    data: {
-      todayReservations: todayRes.data ?? [],
-      weekCount: weekRes.count ?? 0,
-      customerCount: customerRes.count ?? 0,
-    },
-  })
+    const [staffData, menuData, categoryData, customerData] = await Promise.all([
+      staffIds.length > 0
+        ? db.select({ id: schema.staff.id, displayName: schema.staff.displayName, photoUrl: schema.staff.photoUrl }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+        : Promise.resolve([]),
+      menuIds.length > 0
+        ? db.select({ id: schema.menus.id, name: schema.menus.name, price: schema.menus.price, durationMin: schema.menus.durationMin, categoryId: schema.menus.categoryId }).from(schema.menus).where(inArray(schema.menus.id, menuIds))
+        : Promise.resolve([]),
+      db.select().from(schema.menuCategories).where(eq(schema.menuCategories.companyId, staff.companyId)),
+      customerIds.length > 0
+        ? db.select({ id: schema.customers.id, name: schema.customers.name, phone: schema.customers.phone, email: schema.customers.email }).from(schema.customers).where(inArray(schema.customers.id, customerIds))
+        : Promise.resolve([]),
+    ])
+
+    const staffMap = new Map(staffData.map(s => [s.id, { display_name: s.displayName, photo_url: s.photoUrl }]))
+    const categoryMap = new Map(categoryData.map(cat => [cat.id, { name: cat.name }]))
+    const menuMap = new Map(menuData.map(m => [m.id, {
+      name: m.name,
+      price: m.price,
+      duration_min: m.durationMin,
+      category: m.categoryId ? categoryMap.get(m.categoryId) ?? null : null,
+    }]))
+    const customerMap = new Map(customerData.map(cust => [cust.id, { name: cust.name, phone: cust.phone, email: cust.email }]))
+
+    const todayReservations = todayReservationsRaw.map(r => ({
+      ...r,
+      staff: staffMap.get(r.staffId) ?? null,
+      menu: menuMap.get(r.menuId) ?? null,
+      customer: r.customerId ? customerMap.get(r.customerId) ?? null : null,
+    }))
+
+    return c.json({
+      data: {
+        todayReservations,
+        weekCount: weekCountResult[0]?.count ?? 0,
+        customerCount: customerCountResult[0]?.count ?? 0,
+      },
+    })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Reservations ----------
@@ -219,27 +294,60 @@ admin.get('/reservations', async (c) => {
   const startDate = c.req.query('startDate')
   const endDate = c.req.query('endDate')
   const status = c.req.query('status')
-  const staffId = c.req.query('staffId')
+  const staffIdFilter = c.req.query('staffId')
 
-  let query = supabaseAdmin
-    .from('reservations')
-    .select(`
-      *,
-      staff:staff_id (display_name, photo_url),
-      menu:menu_id (name, price, duration_min, category:category_id (name)),
-      customer:customer_id (name, phone, email)
-    `)
-    .eq('store_id', storeId)
-    .order('start_at', { ascending: true })
+  try {
+    const conditions = [eq(schema.reservations.storeId, storeId)]
+    if (startDate) conditions.push(gte(schema.reservations.startAt, new Date(`${startDate}T00:00:00`)))
+    if (endDate) conditions.push(lte(schema.reservations.startAt, new Date(`${endDate}T23:59:59`)))
+    if (status) conditions.push(eq(schema.reservations.status, status))
+    if (staffIdFilter) conditions.push(eq(schema.reservations.staffId, staffIdFilter))
 
-  if (startDate) query = query.gte('start_at', `${startDate}T00:00:00`)
-  if (endDate) query = query.lte('start_at', `${endDate}T23:59:59`)
-  if (status) query = query.eq('status', status)
-  if (staffId) query = query.eq('staff_id', staffId)
+    const reservationsRaw = await db
+      .select()
+      .from(schema.reservations)
+      .where(and(...conditions))
+      .orderBy(asc(schema.reservations.startAt))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    // Enrich with related data
+    const staffIds = [...new Set(reservationsRaw.map(r => r.staffId).filter(Boolean))]
+    const menuIds = [...new Set(reservationsRaw.map(r => r.menuId).filter(Boolean))]
+    const customerIds = [...new Set(reservationsRaw.map(r => r.customerId).filter(Boolean))] as string[]
+
+    const [staffData, menuData, categoryData, customerData] = await Promise.all([
+      staffIds.length > 0
+        ? db.select({ id: schema.staff.id, displayName: schema.staff.displayName, photoUrl: schema.staff.photoUrl }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+        : Promise.resolve([]),
+      menuIds.length > 0
+        ? db.select({ id: schema.menus.id, name: schema.menus.name, price: schema.menus.price, durationMin: schema.menus.durationMin, categoryId: schema.menus.categoryId }).from(schema.menus).where(inArray(schema.menus.id, menuIds))
+        : Promise.resolve([]),
+      db.select().from(schema.menuCategories).where(eq(schema.menuCategories.companyId, staff.companyId)),
+      customerIds.length > 0
+        ? db.select({ id: schema.customers.id, name: schema.customers.name, phone: schema.customers.phone, email: schema.customers.email }).from(schema.customers).where(inArray(schema.customers.id, customerIds))
+        : Promise.resolve([]),
+    ])
+
+    const staffMap = new Map(staffData.map(s => [s.id, { display_name: s.displayName, photo_url: s.photoUrl }]))
+    const categoryMap = new Map(categoryData.map(cat => [cat.id, { name: cat.name }]))
+    const menuMap = new Map(menuData.map(m => [m.id, {
+      name: m.name,
+      price: m.price,
+      duration_min: m.durationMin,
+      category: m.categoryId ? categoryMap.get(m.categoryId) ?? null : null,
+    }]))
+    const customerMap = new Map(customerData.map(cust => [cust.id, { name: cust.name, phone: cust.phone, email: cust.email }]))
+
+    const data = reservationsRaw.map(r => ({
+      ...r,
+      staff: staffMap.get(r.staffId) ?? null,
+      menu: menuMap.get(r.menuId) ?? null,
+      customer: r.customerId ? customerMap.get(r.customerId) ?? null : null,
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // POST /api/admin/reservations
@@ -257,26 +365,28 @@ admin.post('/reservations', async (c) => {
     notes?: string
   }>()
 
-  const { data, error } = await supabaseAdmin
-    .from('reservations')
-    .insert({
-      store_id: body.storeId ?? staff.storeId,
-      company_id: staff.companyId,
-      staff_id: body.staffId,
-      menu_id: body.menuId,
-      start_at: body.startAt,
-      end_at: body.endAt,
-      status: 'confirmed',
-      source: body.source ?? 'phone',
-      guest_name: body.guestName,
-      guest_phone: body.guestPhone ?? null,
-      notes: body.notes ?? null,
-    })
-    .select()
-    .single()
+  try {
+    const [data] = await db
+      .insert(schema.reservations)
+      .values({
+        storeId: body.storeId ?? staff.storeId,
+        companyId: staff.companyId,
+        staffId: body.staffId,
+        menuId: body.menuId,
+        startAt: new Date(body.startAt),
+        endAt: new Date(body.endAt),
+        status: 'confirmed',
+        source: body.source ?? 'phone',
+        guestName: body.guestName,
+        guestPhone: body.guestPhone ?? null,
+        notes: body.notes ?? null,
+      })
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
+    return c.json({ data }, 201)
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/reservations/:id
@@ -284,20 +394,22 @@ admin.patch('/reservations/:id', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json<{ status: string }>()
 
-  const updateData: Record<string, unknown> = { status: body.status }
-  if (body.status === 'cancelled') {
-    updateData.cancelled_at = new Date().toISOString()
+  try {
+    const updateData: Record<string, unknown> = { status: body.status }
+    if (body.status === 'cancelled') {
+      updateData.cancelledAt = new Date()
+    }
+
+    const [data] = await db
+      .update(schema.reservations)
+      .set(updateData)
+      .where(eq(schema.reservations.id, id))
+      .returning()
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  const { data, error } = await supabaseAdmin
-    .from('reservations')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
 })
 
 // ---------- Menu Categories ----------
@@ -306,14 +418,17 @@ admin.patch('/reservations/:id', async (c) => {
 admin.get('/menu-categories', async (c) => {
   const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('menu_categories')
-    .select('*')
-    .eq('company_id', staff.companyId)
-    .order('sort_order')
+  try {
+    const data = await db
+      .select()
+      .from(schema.menuCategories)
+      .where(eq(schema.menuCategories.companyId, staff.companyId))
+      .orderBy(asc(schema.menuCategories.sortOrder))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // POST /api/admin/menu-categories
@@ -321,14 +436,20 @@ admin.post('/menu-categories', async (c) => {
   const staff = c.get('staff')
   const body = await c.req.json<{ name: string; sortOrder?: number }>()
 
-  const { data, error } = await supabaseAdmin
-    .from('menu_categories')
-    .insert({ company_id: staff.companyId, name: body.name, sort_order: body.sortOrder ?? 0 })
-    .select()
-    .single()
+  try {
+    const [data] = await db
+      .insert(schema.menuCategories)
+      .values({
+        companyId: staff.companyId,
+        name: body.name,
+        sortOrder: body.sortOrder ?? 0,
+      })
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
+    return c.json({ data }, 201)
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Menus ----------
@@ -338,14 +459,30 @@ admin.get('/menus', async (c) => {
   const staff = c.get('staff')
   const storeId = c.req.query('storeId') ?? staff.storeId
 
-  const { data, error } = await supabaseAdmin
-    .from('menus')
-    .select('*, category:category_id (id, name)')
-    .eq('store_id', storeId)
-    .order('sort_order')
+  try {
+    const menusRaw = await db
+      .select()
+      .from(schema.menus)
+      .where(eq(schema.menus.storeId, storeId))
+      .orderBy(asc(schema.menus.sortOrder))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+    // Fetch categories
+    const categoryIds = [...new Set(menusRaw.map(m => m.categoryId).filter(Boolean))] as string[]
+    const categories = categoryIds.length > 0
+      ? await db.select().from(schema.menuCategories).where(inArray(schema.menuCategories.id, categoryIds))
+      : []
+    const categoryMap = new Map(categories.map(cat => [cat.id, { id: cat.id, name: cat.name }]))
+
+    const data = menusRaw.map(m => ({
+      ...m,
+      workload_points: Number(m.workloadPoints),
+      category: m.categoryId ? categoryMap.get(m.categoryId) ?? null : null,
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // POST /api/admin/menus
@@ -362,25 +499,35 @@ admin.post('/menus', async (c) => {
     workloadPoints?: number
   }>()
 
-  const { data, error } = await supabaseAdmin
-    .from('menus')
-    .insert({
-      store_id: staff.storeId,
-      company_id: staff.companyId,
-      name: body.name,
-      category_id: body.categoryId ?? null,
-      description: body.description ?? null,
-      price: body.price,
-      duration_min: body.durationMin,
-      is_public: body.isPublic ?? true,
-      sort_order: body.sortOrder ?? 0,
-      workload_points: body.workloadPoints ?? 1.0,
-    })
-    .select('*, category:category_id (id, name)')
-    .single()
+  try {
+    const [inserted] = await db
+      .insert(schema.menus)
+      .values({
+        storeId: staff.storeId,
+        companyId: staff.companyId,
+        name: body.name,
+        categoryId: body.categoryId ?? null,
+        description: body.description ?? null,
+        price: body.price,
+        durationMin: body.durationMin,
+        isPublic: body.isPublic ?? true,
+        sortOrder: body.sortOrder ?? 0,
+        workloadPoints: String(body.workloadPoints ?? 1.0),
+      })
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
+    // Fetch category for response
+    let category = null
+    if (inserted.categoryId) {
+      const [cat] = await db.select().from(schema.menuCategories).where(eq(schema.menuCategories.id, inserted.categoryId))
+      if (cat) category = { id: cat.id, name: cat.name }
+    }
+
+    const data = { ...inserted, workload_points: Number(inserted.workloadPoints), category }
+    return c.json({ data }, 201)
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/menus/:id
@@ -397,38 +544,47 @@ admin.patch('/menus/:id', async (c) => {
     workloadPoints?: number
   }>()
 
-  const updateData: Record<string, unknown> = {}
-  if (body.name !== undefined) updateData.name = body.name
-  if (body.categoryId !== undefined) updateData.category_id = body.categoryId
-  if (body.description !== undefined) updateData.description = body.description
-  if (body.price !== undefined) updateData.price = body.price
-  if (body.durationMin !== undefined) updateData.duration_min = body.durationMin
-  if (body.isPublic !== undefined) updateData.is_public = body.isPublic
-  if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder
-  if (body.workloadPoints !== undefined) updateData.workload_points = body.workloadPoints
+  try {
+    const updateData: Record<string, unknown> = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.categoryId !== undefined) updateData.categoryId = body.categoryId
+    if (body.description !== undefined) updateData.description = body.description
+    if (body.price !== undefined) updateData.price = body.price
+    if (body.durationMin !== undefined) updateData.durationMin = body.durationMin
+    if (body.isPublic !== undefined) updateData.isPublic = body.isPublic
+    if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder
+    if (body.workloadPoints !== undefined) updateData.workloadPoints = String(body.workloadPoints)
 
-  const { data, error } = await supabaseAdmin
-    .from('menus')
-    .update(updateData)
-    .eq('id', id)
-    .select('*, category:category_id (id, name)')
-    .single()
+    const [updated] = await db
+      .update(schema.menus)
+      .set(updateData)
+      .where(eq(schema.menus.id, id))
+      .returning()
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+    // Fetch category for response
+    let category = null
+    if (updated.categoryId) {
+      const [cat] = await db.select().from(schema.menuCategories).where(eq(schema.menuCategories.id, updated.categoryId))
+      if (cat) category = { id: cat.id, name: cat.name }
+    }
+
+    const data = { ...updated, workload_points: Number(updated.workloadPoints), category }
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // DELETE /api/admin/menus/:id
 admin.delete('/menus/:id', async (c) => {
   const id = c.req.param('id')
 
-  const { error } = await supabaseAdmin
-    .from('menus')
-    .delete()
-    .eq('id', id)
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: { message: 'Deleted' } })
+  try {
+    await db.delete(schema.menus).where(eq(schema.menus.id, id))
+    return c.json({ data: { message: 'Deleted' } })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Workload ----------
@@ -439,55 +595,73 @@ admin.get('/workload', async (c) => {
   const storeId = c.req.query('storeId')
   const startDate = c.req.query('startDate')
   const endDate = c.req.query('endDate')
-  const staffId = c.req.query('staffId')
+  const staffIdFilter = c.req.query('staffId')
 
-  let query = supabaseAdmin
-    .from('reservations')
-    .select(`
-      staff_id,
-      staff:staff_id (display_name),
-      menu:menu_id (name, workload_points)
-    `)
-    .eq('company_id', staff.companyId)
-    .eq('status', 'completed')
+  try {
+    const conditions = [
+      eq(schema.reservations.companyId, staff.companyId),
+      eq(schema.reservations.status, 'completed'),
+    ]
+    if (storeId) conditions.push(eq(schema.reservations.storeId, storeId))
+    if (staffIdFilter) conditions.push(eq(schema.reservations.staffId, staffIdFilter))
+    if (startDate) conditions.push(gte(schema.reservations.startAt, new Date(`${startDate}T00:00:00`)))
+    if (endDate) conditions.push(lte(schema.reservations.startAt, new Date(`${endDate}T23:59:59`)))
 
-  if (storeId) query = query.eq('store_id', storeId)
-  if (staffId) query = query.eq('staff_id', staffId)
-  if (startDate) query = query.gte('start_at', `${startDate}T00:00:00`)
-  if (endDate) query = query.lte('start_at', `${endDate}T23:59:59`)
+    const reservationsRaw = await db
+      .select({
+        staffId: schema.reservations.staffId,
+        menuId: schema.reservations.menuId,
+      })
+      .from(schema.reservations)
+      .where(and(...conditions))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
+    // Fetch staff and menu data
+    const staffIds = [...new Set(reservationsRaw.map(r => r.staffId).filter(Boolean))]
+    const menuIds = [...new Set(reservationsRaw.map(r => r.menuId).filter(Boolean))]
 
-  // Aggregate by staff
-  const staffMap = new Map<string, {
-    staffId: string
-    staffName: string
-    totalPoints: number
-    totalCount: number
-    byMenu: Record<string, { count: number; points: number }>
-  }>()
+    const [staffData, menuData] = await Promise.all([
+      staffIds.length > 0
+        ? db.select({ id: schema.staff.id, displayName: schema.staff.displayName }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+        : Promise.resolve([]),
+      menuIds.length > 0
+        ? db.select({ id: schema.menus.id, name: schema.menus.name, workloadPoints: schema.menus.workloadPoints }).from(schema.menus).where(inArray(schema.menus.id, menuIds))
+        : Promise.resolve([]),
+    ])
 
-  for (const r of data ?? []) {
-    const sid = r.staff_id
-    const staffRel = r.staff as unknown as { display_name: string } | null
-    const menuRel = r.menu as unknown as { name: string; workload_points: number } | null
-    const staffName = staffRel?.display_name ?? '-'
-    const menuName = menuRel?.name ?? '-'
-    const points = menuRel?.workload_points ?? 1.0
+    const staffMap = new Map(staffData.map(s => [s.id, s.displayName]))
+    const menuMap = new Map(menuData.map(m => [m.id, { name: m.name, workloadPoints: Number(m.workloadPoints) }]))
 
-    if (!staffMap.has(sid)) {
-      staffMap.set(sid, { staffId: sid, staffName, totalPoints: 0, totalCount: 0, byMenu: {} })
+    // Aggregate by staff
+    const staffAggMap = new Map<string, {
+      staffId: string
+      staffName: string
+      totalPoints: number
+      totalCount: number
+      byMenu: Record<string, { count: number; points: number }>
+    }>()
+
+    for (const r of reservationsRaw) {
+      const sid = r.staffId
+      const staffName = staffMap.get(sid) ?? '-'
+      const menu = menuMap.get(r.menuId)
+      const menuName = menu?.name ?? '-'
+      const points = menu?.workloadPoints ?? 1.0
+
+      if (!staffAggMap.has(sid)) {
+        staffAggMap.set(sid, { staffId: sid, staffName, totalPoints: 0, totalCount: 0, byMenu: {} })
+      }
+      const entry = staffAggMap.get(sid)!
+      entry.totalPoints += points
+      entry.totalCount++
+      if (!entry.byMenu[menuName]) entry.byMenu[menuName] = { count: 0, points: 0 }
+      entry.byMenu[menuName].count++
+      entry.byMenu[menuName].points += points
     }
-    const entry = staffMap.get(sid)!
-    entry.totalPoints += points
-    entry.totalCount++
-    if (!entry.byMenu[menuName]) entry.byMenu[menuName] = { count: 0, points: 0 }
-    entry.byMenu[menuName].count++
-    entry.byMenu[menuName].points += points
-  }
 
-  return c.json({ data: Array.from(staffMap.values()) })
+    return c.json({ data: Array.from(staffAggMap.values()) })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Staff ----------
@@ -499,25 +673,38 @@ admin.get('/staff', async (c) => {
   const activeOnly = c.req.query('activeOnly') !== 'false'
   const roles = c.req.query('roles') // comma-separated
 
-  let query = supabaseAdmin
-    .from('staff')
-    .select('*, specialties:staff_specialties(specialty)')
-    .eq('store_id', storeId)
-    .order('sort_order')
+  try {
+    const conditions = [eq(schema.staff.storeId, storeId)]
+    if (activeOnly) conditions.push(eq(schema.staff.isActive, true))
+    if (roles) conditions.push(inArray(schema.staff.role, roles.split(',')))
 
-  if (activeOnly) query = query.eq('is_active', true)
-  if (roles) query = query.in('role', roles.split(','))
+    const staffData = await db
+      .select()
+      .from(schema.staff)
+      .where(and(...conditions))
+      .orderBy(asc(schema.staff.sortOrder))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
+    // Fetch specialties for all staff
+    const staffIds = staffData.map(s => s.id)
+    const specialtiesData = staffIds.length > 0
+      ? await db.select().from(schema.staffSpecialties).where(inArray(schema.staffSpecialties.staffId, staffIds))
+      : []
 
-  // Flatten specialties from [{specialty: "カット"}] to ["カット"]
-  const result = (data ?? []).map(s => ({
-    ...s,
-    specialties: ((s as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
-  }))
+    const specialtiesMap = new Map<string, string[]>()
+    for (const sp of specialtiesData) {
+      if (!specialtiesMap.has(sp.staffId)) specialtiesMap.set(sp.staffId, [])
+      specialtiesMap.get(sp.staffId)!.push(sp.specialty)
+    }
 
-  return c.json({ data: result })
+    const data = staffData.map(s => ({
+      ...s,
+      specialties: specialtiesMap.get(s.id) ?? [],
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/staff/:id
@@ -532,42 +719,40 @@ admin.patch('/staff/:id', async (c) => {
     isActive?: boolean
   }>()
 
-  const updateData: Record<string, unknown> = {}
-  if (body.displayName !== undefined) updateData.display_name = body.displayName
-  if (body.role !== undefined) updateData.role = body.role
-  if (body.position !== undefined) updateData.position = body.position
-  if (body.bio !== undefined) updateData.bio = body.bio
-  if (body.isActive !== undefined) updateData.is_active = body.isActive
+  try {
+    const updateData: Record<string, unknown> = {}
+    if (body.displayName !== undefined) updateData.displayName = body.displayName
+    if (body.role !== undefined) updateData.role = body.role
+    if (body.position !== undefined) updateData.position = body.position
+    if (body.bio !== undefined) updateData.bio = body.bio
+    if (body.isActive !== undefined) updateData.isActive = body.isActive
 
-  if (Object.keys(updateData).length > 0) {
-    const { error } = await supabaseAdmin.from('staff').update(updateData).eq('id', id)
-    if (error) return c.json({ message: error.message }, 500)
-  }
-
-  // Update specialties (replace all)
-  if (body.specialties !== undefined) {
-    await supabaseAdmin.from('staff_specialties').delete().eq('staff_id', id)
-    if (body.specialties.length > 0) {
-      const { error: spError } = await supabaseAdmin
-        .from('staff_specialties')
-        .insert(body.specialties.map(s => ({ staff_id: id, specialty: s })))
-      if (spError) return c.json({ message: spError.message }, 500)
+    if (Object.keys(updateData).length > 0) {
+      await db.update(schema.staff).set(updateData).where(eq(schema.staff.id, id))
     }
+
+    // Update specialties (replace all)
+    if (body.specialties !== undefined) {
+      await db.delete(schema.staffSpecialties).where(eq(schema.staffSpecialties.staffId, id))
+      if (body.specialties.length > 0) {
+        await db.insert(schema.staffSpecialties).values(
+          body.specialties.map(s => ({ staffId: id, specialty: s }))
+        )
+      }
+    }
+
+    // Return updated staff with specialties
+    const [staffData] = await db.select().from(schema.staff).where(eq(schema.staff.id, id))
+    const specialtiesData = await db.select().from(schema.staffSpecialties).where(eq(schema.staffSpecialties.staffId, id))
+
+    const data = {
+      ...staffData,
+      specialties: specialtiesData.map(sp => sp.specialty),
+    }
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  const { data, error: fetchError } = await supabaseAdmin
-    .from('staff')
-    .select('*, specialties:staff_specialties(specialty)')
-    .eq('id', id)
-    .single()
-
-  if (fetchError) return c.json({ message: fetchError.message }, 500)
-
-  const result = {
-    ...data,
-    specialties: ((data as Record<string, unknown>).specialties as Array<{ specialty: string }> | null)?.map(sp => sp.specialty) ?? [],
-  }
-  return c.json({ data: result })
 })
 
 // ---------- Customers ----------
@@ -578,89 +763,155 @@ admin.get('/customers', async (c) => {
   const search = c.req.query('search')
   const storeId = c.req.query('storeId')
 
-  if (storeId) {
-    // Get customer IDs who have reservations at this store
-    const { data: reservations, error: resError } = await supabaseAdmin
-      .from('reservations')
-      .select('customer_id')
-      .eq('store_id', storeId)
-      .not('customer_id', 'is', null)
+  try {
+    if (storeId) {
+      // Get customer IDs who have reservations at this store
+      const reservationsWithCustomer = await db
+        .select({ customerId: schema.reservations.customerId })
+        .from(schema.reservations)
+        .where(
+          and(
+            eq(schema.reservations.storeId, storeId),
+            sql`${schema.reservations.customerId} IS NOT NULL`
+          )
+        )
 
-    if (resError) return c.json({ message: resError.message }, 500)
+      const customerIds = [...new Set(reservationsWithCustomer.map(r => r.customerId).filter(Boolean))] as string[]
+      if (customerIds.length === 0) return c.json({ data: [] })
 
-    const customerIds = [...new Set((reservations ?? []).map(r => r.customer_id).filter(Boolean))]
-    if (customerIds.length === 0) return c.json({ data: [] })
+      const conditions = [inArray(schema.customers.id, customerIds)]
+      if (search && search.trim()) {
+        const term = `%${search.trim()}%`
+        conditions.push(
+          or(
+            ilike(schema.customers.name, term),
+            ilike(schema.customers.phone ?? '', term)
+          )!
+        )
+      }
 
-    let query = supabaseAdmin
-      .from('customers')
-      .select('*, stats:customer_stats!customer_stats_customer_id_fkey(visit_count, first_visit_at, last_visit_at)')
-      .in('id', customerIds)
+      const customersData = await db
+        .select()
+        .from(schema.customers)
+        .where(and(...conditions))
 
-    if (search && search.trim()) {
-      const term = `%${search.trim()}%`
-      query = query.or(`name.ilike.${term},phone.ilike.${term}`)
+      // Fetch customer stats from view
+      const statsResult = await db.execute(
+        sql`SELECT customer_id, visit_count, first_visit_at, last_visit_at FROM customer_stats WHERE customer_id = ANY(${customerIds})`
+      )
+      const statsRows = (statsResult as unknown as { rows: Array<{ customer_id: string; visit_count: number; first_visit_at: string | null; last_visit_at: string | null }> }).rows ?? statsResult
+
+      const statsMap = new Map<string, { visit_count: number; first_visit_at: string | null; last_visit_at: string | null }>()
+      for (const row of statsRows as Array<{ customer_id: string; visit_count: number; first_visit_at: string | null; last_visit_at: string | null }>) {
+        statsMap.set(row.customer_id, { visit_count: row.visit_count, first_visit_at: row.first_visit_at, last_visit_at: row.last_visit_at })
+      }
+
+      const result = customersData.map(cust => {
+        const s = statsMap.get(cust.id)
+        return { ...cust, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null }
+      }).sort((a, b) => {
+        if (!a.last_visit_at && !b.last_visit_at) return 0
+        if (!a.last_visit_at) return 1
+        if (!b.last_visit_at) return -1
+        return String(b.last_visit_at).localeCompare(String(a.last_visit_at))
+      })
+
+      return c.json({ data: result })
     }
 
-    const { data, error } = await query
-    if (error) return c.json({ message: error.message }, 500)
+    // No storeId: return all company customers
+    const conditions = [eq(schema.customers.companyId, staff.companyId)]
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`
+      conditions.push(
+        or(
+          ilike(schema.customers.name, term),
+          ilike(schema.customers.phone ?? '', term)
+        )!
+      )
+    }
 
-    // Flatten stats into customer object for backward compatibility
-    const result = (data ?? []).map(c => {
-      const s = (c as Record<string, unknown>).stats as { visit_count: number; first_visit_at: string | null; last_visit_at: string | null } | null
-      return { ...c, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null, stats: undefined }
+    const customersData = await db
+      .select()
+      .from(schema.customers)
+      .where(and(...conditions))
+
+    // Fetch customer stats from view
+    const allCustomerIds = customersData.map(c => c.id)
+    let statsMap = new Map<string, { visit_count: number; first_visit_at: string | null; last_visit_at: string | null }>()
+
+    if (allCustomerIds.length > 0) {
+      const statsResult = await db.execute(
+        sql`SELECT customer_id, visit_count, first_visit_at, last_visit_at FROM customer_stats WHERE customer_id = ANY(${allCustomerIds})`
+      )
+      const statsRows = (statsResult as unknown as { rows: Array<{ customer_id: string; visit_count: number; first_visit_at: string | null; last_visit_at: string | null }> }).rows ?? statsResult
+
+      for (const row of statsRows as Array<{ customer_id: string; visit_count: number; first_visit_at: string | null; last_visit_at: string | null }>) {
+        statsMap.set(row.customer_id, { visit_count: row.visit_count, first_visit_at: row.first_visit_at, last_visit_at: row.last_visit_at })
+      }
+    }
+
+    const result = customersData.map(cust => {
+      const s = statsMap.get(cust.id)
+      return { ...cust, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null }
     }).sort((a, b) => {
       if (!a.last_visit_at && !b.last_visit_at) return 0
       if (!a.last_visit_at) return 1
       if (!b.last_visit_at) return -1
-      return b.last_visit_at.localeCompare(a.last_visit_at)
+      return String(b.last_visit_at).localeCompare(String(a.last_visit_at))
     })
 
     return c.json({ data: result })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  // No storeId: return all company customers
-  let query = supabaseAdmin
-    .from('customers')
-    .select('*, stats:customer_stats!customer_stats_customer_id_fkey(visit_count, first_visit_at, last_visit_at)')
-    .eq('company_id', staff.companyId)
-
-  if (search && search.trim()) {
-    const term = `%${search.trim()}%`
-    query = query.or(`name.ilike.${term},phone.ilike.${term}`)
-  }
-
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
-
-  const result = (data ?? []).map(c => {
-    const s = (c as Record<string, unknown>).stats as { visit_count: number; first_visit_at: string | null; last_visit_at: string | null } | null
-    return { ...c, visit_count: s?.visit_count ?? 0, first_visit_at: s?.first_visit_at ?? null, last_visit_at: s?.last_visit_at ?? null, stats: undefined }
-  }).sort((a, b) => {
-    if (!a.last_visit_at && !b.last_visit_at) return 0
-    if (!a.last_visit_at) return 1
-    if (!b.last_visit_at) return -1
-    return b.last_visit_at.localeCompare(a.last_visit_at)
-  })
-
-  return c.json({ data: result })
 })
 
 // GET /api/admin/customers/:id/reservations
 admin.get('/customers/:id/reservations', async (c) => {
   const customerId = c.req.param('id')
+  const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('reservations')
-    .select(`
-      *,
-      staff:staff_id (display_name, photo_url),
-      menu:menu_id (name, price, duration_min, category:category_id (name))
-    `)
-    .eq('customer_id', customerId)
-    .order('start_at', { ascending: false })
+  try {
+    const reservationsRaw = await db
+      .select()
+      .from(schema.reservations)
+      .where(eq(schema.reservations.customerId, customerId))
+      .orderBy(desc(schema.reservations.startAt))
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    // Enrich with related data
+    const staffIds = [...new Set(reservationsRaw.map(r => r.staffId).filter(Boolean))]
+    const menuIds = [...new Set(reservationsRaw.map(r => r.menuId).filter(Boolean))]
+
+    const [staffData, menuData, categoryData] = await Promise.all([
+      staffIds.length > 0
+        ? db.select({ id: schema.staff.id, displayName: schema.staff.displayName, photoUrl: schema.staff.photoUrl }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+        : Promise.resolve([]),
+      menuIds.length > 0
+        ? db.select({ id: schema.menus.id, name: schema.menus.name, price: schema.menus.price, durationMin: schema.menus.durationMin, categoryId: schema.menus.categoryId }).from(schema.menus).where(inArray(schema.menus.id, menuIds))
+        : Promise.resolve([]),
+      db.select().from(schema.menuCategories).where(eq(schema.menuCategories.companyId, staff.companyId)),
+    ])
+
+    const staffMap = new Map(staffData.map(s => [s.id, { display_name: s.displayName, photo_url: s.photoUrl }]))
+    const categoryMap = new Map(categoryData.map(cat => [cat.id, { name: cat.name }]))
+    const menuMap = new Map(menuData.map(m => [m.id, {
+      name: m.name,
+      price: m.price,
+      duration_min: m.durationMin,
+      category: m.categoryId ? categoryMap.get(m.categoryId) ?? null : null,
+    }]))
+
+    const data = reservationsRaw.map(r => ({
+      ...r,
+      staff: staffMap.get(r.staffId) ?? null,
+      menu: menuMap.get(r.menuId) ?? null,
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Sales ----------
@@ -672,24 +923,50 @@ admin.get('/sales', async (c) => {
   const startDate = c.req.query('startDate')
   const endDate = c.req.query('endDate')
 
-  let query = supabaseAdmin
-    .from('sales')
-    .select(`
-      *,
-      staff:staff_id (display_name),
-      customer:customer_id (name),
-      store:store_id (name)
-    `)
-    .eq('company_id', staff.companyId)
-    .order('paid_at', { ascending: false })
+  try {
+    const conditions = [eq(schema.sales.companyId, staff.companyId)]
+    if (storeId) conditions.push(eq(schema.sales.storeId, storeId))
+    if (startDate) conditions.push(gte(schema.sales.paidAt, new Date(`${startDate}T00:00:00`)))
+    if (endDate) conditions.push(lte(schema.sales.paidAt, new Date(`${endDate}T23:59:59`)))
 
-  if (storeId) query = query.eq('store_id', storeId)
-  if (startDate) query = query.gte('paid_at', `${startDate}T00:00:00`)
-  if (endDate) query = query.lte('paid_at', `${endDate}T23:59:59`)
+    const salesRaw = await db
+      .select()
+      .from(schema.sales)
+      .where(and(...conditions))
+      .orderBy(desc(schema.sales.paidAt))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    // Enrich with related data
+    const staffIds = [...new Set(salesRaw.map(s => s.staffId).filter(Boolean))] as string[]
+    const customerIds = [...new Set(salesRaw.map(s => s.customerId).filter(Boolean))] as string[]
+    const storeIds = [...new Set(salesRaw.map(s => s.storeId).filter(Boolean))]
+
+    const [staffData, customerData, storesData] = await Promise.all([
+      staffIds.length > 0
+        ? db.select({ id: schema.staff.id, displayName: schema.staff.displayName }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+        : Promise.resolve([]),
+      customerIds.length > 0
+        ? db.select({ id: schema.customers.id, name: schema.customers.name }).from(schema.customers).where(inArray(schema.customers.id, customerIds))
+        : Promise.resolve([]),
+      storeIds.length > 0
+        ? db.select({ id: schema.stores.id, name: schema.stores.name }).from(schema.stores).where(inArray(schema.stores.id, storeIds))
+        : Promise.resolve([]),
+    ])
+
+    const staffMap = new Map(staffData.map(s => [s.id, { display_name: s.displayName }]))
+    const customerMap = new Map(customerData.map(c => [c.id, { name: c.name }]))
+    const storeMap = new Map(storesData.map(s => [s.id, { name: s.name }]))
+
+    const data = salesRaw.map(s => ({
+      ...s,
+      staff: s.staffId ? staffMap.get(s.staffId) ?? null : null,
+      customer: s.customerId ? customerMap.get(s.customerId) ?? null : null,
+      store: storeMap.get(s.storeId) ?? null,
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // GET /api/admin/sales/summary
@@ -699,52 +976,58 @@ admin.get('/sales/summary', async (c) => {
   const startDate = c.req.query('startDate')
   const endDate = c.req.query('endDate')
 
-  let query = supabaseAdmin
-    .from('sales')
-    .select('amount, payment_method, store_id, paid_at')
-    .eq('company_id', staff.companyId)
+  try {
+    const conditions = [eq(schema.sales.companyId, staff.companyId)]
+    if (storeId) conditions.push(eq(schema.sales.storeId, storeId))
+    if (startDate) conditions.push(gte(schema.sales.paidAt, new Date(`${startDate}T00:00:00`)))
+    if (endDate) conditions.push(lte(schema.sales.paidAt, new Date(`${endDate}T23:59:59`)))
 
-  if (storeId) query = query.eq('store_id', storeId)
-  if (startDate) query = query.gte('paid_at', `${startDate}T00:00:00`)
-  if (endDate) query = query.lte('paid_at', `${endDate}T23:59:59`)
+    const salesData = await db
+      .select({
+        amount: schema.sales.amount,
+        paymentMethod: schema.sales.paymentMethod,
+        storeId: schema.sales.storeId,
+        paidAt: schema.sales.paidAt,
+      })
+      .from(schema.sales)
+      .where(and(...conditions))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
+    const totalAmount = salesData.reduce((sum, s) => sum + s.amount, 0)
+    const totalCount = salesData.length
 
-  const sales = data ?? []
-  const totalAmount = sales.reduce((sum, s) => sum + s.amount, 0)
-  const totalCount = sales.length
+    // By payment method
+    const byPaymentMethod: Record<string, { count: number; amount: number }> = {}
+    for (const s of salesData) {
+      if (!byPaymentMethod[s.paymentMethod]) byPaymentMethod[s.paymentMethod] = { count: 0, amount: 0 }
+      byPaymentMethod[s.paymentMethod].count++
+      byPaymentMethod[s.paymentMethod].amount += s.amount
+    }
 
-  // By payment method
-  const byPaymentMethod: Record<string, { count: number; amount: number }> = {}
-  for (const s of sales) {
-    if (!byPaymentMethod[s.payment_method]) byPaymentMethod[s.payment_method] = { count: 0, amount: 0 }
-    byPaymentMethod[s.payment_method].count++
-    byPaymentMethod[s.payment_method].amount += s.amount
+    // By store
+    const byStore: Record<string, { count: number; amount: number }> = {}
+    for (const s of salesData) {
+      if (!byStore[s.storeId]) byStore[s.storeId] = { count: 0, amount: 0 }
+      byStore[s.storeId].count++
+      byStore[s.storeId].amount += s.amount
+    }
+
+    // Fetch store names
+    const storesData = await db
+      .select({ id: schema.stores.id, name: schema.stores.name })
+      .from(schema.stores)
+      .where(eq(schema.stores.companyId, staff.companyId))
+
+    const storeNameMap = Object.fromEntries(storesData.map(s => [s.id, s.name]))
+    const byStoreNamed = Object.fromEntries(
+      Object.entries(byStore).map(([id, v]) => [storeNameMap[id] ?? id, v])
+    )
+
+    return c.json({
+      data: { totalAmount, totalCount, byPaymentMethod, byStore: byStoreNamed },
+    })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  // By store
-  const byStore: Record<string, { count: number; amount: number }> = {}
-  for (const s of sales) {
-    if (!byStore[s.store_id]) byStore[s.store_id] = { count: 0, amount: 0 }
-    byStore[s.store_id].count++
-    byStore[s.store_id].amount += s.amount
-  }
-
-  // Fetch store names
-  const { data: stores } = await supabaseAdmin
-    .from('stores')
-    .select('id, name')
-    .eq('company_id', staff.companyId)
-
-  const storeMap = Object.fromEntries((stores ?? []).map(s => [s.id, s.name]))
-  const byStoreNamed = Object.fromEntries(
-    Object.entries(byStore).map(([id, v]) => [storeMap[id] ?? id, v])
-  )
-
-  return c.json({
-    data: { totalAmount, totalCount, byPaymentMethod, byStore: byStoreNamed },
-  })
 })
 
 // POST /api/admin/sales/import-paypay
@@ -778,34 +1061,37 @@ admin.post('/sales/import-paypay', async (c) => {
     return c.json({ data: { imported: 0, skipped, duplicates: 0 } })
   }
 
-  // Check for existing transaction IDs to avoid duplicates
-  const txnIds = completedRows.map((r) => r.transactionId)
-  const { data: existing } = await supabaseAdmin
-    .from('sales')
-    .select('paypay_transaction_id')
-    .in('paypay_transaction_id', txnIds)
+  try {
+    // Check for existing transaction IDs to avoid duplicates
+    const txnIds = completedRows.map((r) => r.transactionId)
+    const existing = await db
+      .select({ paypayTransactionId: schema.sales.paypayTransactionId })
+      .from(schema.sales)
+      .where(inArray(schema.sales.paypayTransactionId, txnIds))
 
-  const existingSet = new Set((existing ?? []).map((e) => e.paypay_transaction_id))
-  const newRows = completedRows.filter((r) => !existingSet.has(r.transactionId))
-  const duplicates = completedRows.length - newRows.length
+    const existingSet = new Set(existing.map((e) => e.paypayTransactionId))
+    const newRows = completedRows.filter((r) => !existingSet.has(r.transactionId))
+    const duplicates = completedRows.length - newRows.length
 
-  if (newRows.length === 0) {
-    return c.json({ data: { imported: 0, skipped, duplicates } })
+    if (newRows.length === 0) {
+      return c.json({ data: { imported: 0, skipped, duplicates } })
+    }
+
+    const insertData = newRows.map((r) => ({
+      storeId: body.storeId,
+      companyId: staff.companyId,
+      amount: r.amount,
+      paymentMethod: 'paypay' as const,
+      paidAt: new Date(r.paidAt),
+      paypayTransactionId: r.transactionId,
+    }))
+
+    await db.insert(schema.sales).values(insertData)
+
+    return c.json({ data: { imported: newRows.length, skipped, duplicates } })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  const insertData = newRows.map((r) => ({
-    store_id: body.storeId,
-    company_id: staff.companyId,
-    amount: r.amount,
-    payment_method: 'paypay',
-    paid_at: r.paidAt,
-    paypay_transaction_id: r.transactionId,
-  }))
-
-  const { error } = await supabaseAdmin.from('sales').insert(insertData)
-  if (error) return c.json({ message: error.message }, 500)
-
-  return c.json({ data: { imported: newRows.length, skipped, duplicates } })
 })
 
 // ---------- Inventory ----------
@@ -814,16 +1100,15 @@ admin.post('/sales/import-paypay', async (c) => {
 admin.get('/inventory/items', async (c) => {
   const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('inventory_items')
-    .select('*')
-    .eq('company_id', staff.companyId)
-    .eq('is_active', true)
-    .order('category')
-    .order('name')
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+  try {
+    const result = await db.execute(
+      sql`SELECT * FROM inventory_items WHERE company_id = ${staff.companyId} AND is_active = true ORDER BY category, name`
+    )
+    const data = (result as unknown as { rows: unknown[] }).rows ?? result
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // GET /api/admin/inventory/stock
@@ -831,20 +1116,22 @@ admin.get('/inventory/stock', async (c) => {
   const staff = c.get('staff')
   const storeId = c.req.query('storeId')
 
-  let query = supabaseAdmin
-    .from('inventory_stock')
-    .select(`
-      *,
-      item:item_id (name, category, unit, cost_price, selling_price),
-      store:store_id (name)
+  try {
+    const storeCondition = storeId ? sql` AND s.store_id = ${storeId}` : sql``
+    const result = await db.execute(sql`
+      SELECT s.*,
+        json_build_object('name', i.name, 'category', i.category, 'unit', i.unit, 'cost_price', i.cost_price, 'selling_price', i.selling_price) as item,
+        json_build_object('name', st.name) as store
+      FROM inventory_stock s
+      LEFT JOIN inventory_items i ON s.item_id = i.id
+      LEFT JOIN stores st ON s.store_id = st.id
+      WHERE s.company_id = ${staff.companyId}${storeCondition}
     `)
-    .eq('company_id', staff.companyId)
-
-  if (storeId) query = query.eq('store_id', storeId)
-
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    const data = (result as unknown as { rows: unknown[] }).rows ?? result
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/inventory/stock/:id
@@ -852,19 +1139,25 @@ admin.patch('/inventory/stock/:id', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json<{ quantity?: number; minQuantity?: number }>()
 
-  const updateData: Record<string, unknown> = {}
-  if (body.quantity !== undefined) updateData.quantity = body.quantity
-  if (body.minQuantity !== undefined) updateData.min_quantity = body.minQuantity
+  try {
+    const setClauses = []
+    if (body.quantity !== undefined) setClauses.push(sql`quantity = ${body.quantity}`)
+    if (body.minQuantity !== undefined) setClauses.push(sql`min_quantity = ${body.minQuantity}`)
 
-  const { data, error } = await supabaseAdmin
-    .from('inventory_stock')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
+    if (setClauses.length === 0) {
+      return c.json({ message: 'No fields to update' }, 400)
+    }
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+    const setFragment = sql.join(setClauses, sql`, `)
+    const result = await db.execute(
+      sql`UPDATE inventory_stock SET ${setFragment} WHERE id = ${id} RETURNING *`
+    )
+    const rows = (result as unknown as { rows: unknown[] }).rows ?? result
+    const data = Array.isArray(rows) ? rows[0] : rows
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // ---------- Attendances ----------
@@ -873,15 +1166,22 @@ admin.patch('/inventory/stock/:id', async (c) => {
 admin.get('/attendances/my-status', async (c) => {
   const staff = c.get('staff')
 
-  const { data, error } = await supabaseAdmin
-    .from('attendances')
-    .select('*')
-    .eq('staff_id', staff.id)
-    .eq('status', 'clocked_in')
-    .maybeSingle()
+  try {
+    const results = await db
+      .select()
+      .from(schema.attendances)
+      .where(
+        and(
+          eq(schema.attendances.staffId, staff.id),
+          eq(schema.attendances.status, 'clocked_in')
+        )
+      )
+      .limit(1)
 
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
+    return c.json({ data: results[0] ?? null })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // POST /api/admin/attendances/clock-in
@@ -889,33 +1189,39 @@ admin.post('/attendances/clock-in', async (c) => {
   const staff = c.get('staff')
   const body = await c.req.json<{ note?: string }>().catch(() => ({ note: undefined }))
 
-  // Check if already clocked in
-  const { data: existing } = await supabaseAdmin
-    .from('attendances')
-    .select('id')
-    .eq('staff_id', staff.id)
-    .eq('status', 'clocked_in')
-    .maybeSingle()
+  try {
+    // Check if already clocked in
+    const existing = await db
+      .select({ id: schema.attendances.id })
+      .from(schema.attendances)
+      .where(
+        and(
+          eq(schema.attendances.staffId, staff.id),
+          eq(schema.attendances.status, 'clocked_in')
+        )
+      )
+      .limit(1)
 
-  if (existing) {
-    return c.json({ message: 'すでに出勤中です' }, 400)
+    if (existing.length > 0) {
+      return c.json({ message: 'すでに出勤中です' }, 400)
+    }
+
+    const [data] = await db
+      .insert(schema.attendances)
+      .values({
+        staffId: staff.id,
+        storeId: staff.storeId,
+        companyId: staff.companyId,
+        clockIn: new Date(),
+        clockInNote: body.note ?? null,
+        status: 'clocked_in',
+      })
+      .returning()
+
+    return c.json({ data }, 201)
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  const { data, error } = await supabaseAdmin
-    .from('attendances')
-    .insert({
-      staff_id: staff.id,
-      store_id: staff.storeId,
-      company_id: staff.companyId,
-      clock_in: new Date().toISOString(),
-      clock_in_note: body.note ?? null,
-      status: 'clocked_in',
-    })
-    .select()
-    .single()
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data }, 201)
 })
 
 // POST /api/admin/attendances/clock-out
@@ -923,31 +1229,36 @@ admin.post('/attendances/clock-out', async (c) => {
   const staff = c.get('staff')
   const body = await c.req.json<{ note?: string }>().catch(() => ({ note: undefined }))
 
-  const { data: existing, error: findError } = await supabaseAdmin
-    .from('attendances')
-    .select('id')
-    .eq('staff_id', staff.id)
-    .eq('status', 'clocked_in')
-    .maybeSingle()
+  try {
+    const existing = await db
+      .select({ id: schema.attendances.id })
+      .from(schema.attendances)
+      .where(
+        and(
+          eq(schema.attendances.staffId, staff.id),
+          eq(schema.attendances.status, 'clocked_in')
+        )
+      )
+      .limit(1)
 
-  if (findError) return c.json({ message: findError.message }, 500)
-  if (!existing) {
-    return c.json({ message: '出勤記録がありません' }, 400)
+    if (existing.length === 0) {
+      return c.json({ message: '出勤記録がありません' }, 400)
+    }
+
+    const [data] = await db
+      .update(schema.attendances)
+      .set({
+        clockOut: new Date(),
+        clockOutNote: body.note ?? null,
+        status: 'completed',
+      })
+      .where(eq(schema.attendances.id, existing[0].id))
+      .returning()
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-
-  const { data, error } = await supabaseAdmin
-    .from('attendances')
-    .update({
-      clock_out: new Date().toISOString(),
-      clock_out_note: body.note ?? null,
-      status: 'completed',
-    })
-    .eq('id', existing.id)
-    .select()
-    .single()
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
 })
 
 // GET /api/admin/attendances
@@ -960,26 +1271,43 @@ admin.get('/attendances', async (c) => {
   const storeId = c.req.query('storeId')
   const startDate = c.req.query('startDate')
   const endDate = c.req.query('endDate')
-  const staffId = c.req.query('staffId')
+  const staffIdFilter = c.req.query('staffId')
 
-  let query = supabaseAdmin
-    .from('attendances')
-    .select(`
-      *,
-      staff:staff_id (display_name),
-      corrector:corrected_by (display_name)
-    `)
-    .eq('company_id', staff.companyId)
-    .order('clock_in', { ascending: false })
+  try {
+    const conditions = [eq(schema.attendances.companyId, staff.companyId)]
+    if (storeId) conditions.push(eq(schema.attendances.storeId, storeId))
+    if (staffIdFilter) conditions.push(eq(schema.attendances.staffId, staffIdFilter))
+    if (startDate) conditions.push(gte(schema.attendances.clockIn, new Date(`${startDate}T00:00:00`)))
+    if (endDate) conditions.push(lte(schema.attendances.clockIn, new Date(`${endDate}T23:59:59`)))
 
-  if (storeId) query = query.eq('store_id', storeId)
-  if (staffId) query = query.eq('staff_id', staffId)
-  if (startDate) query = query.gte('clock_in', `${startDate}T00:00:00`)
-  if (endDate) query = query.lte('clock_in', `${endDate}T23:59:59`)
+    const attendancesRaw = await db
+      .select()
+      .from(schema.attendances)
+      .where(and(...conditions))
+      .orderBy(desc(schema.attendances.clockIn))
 
-  const { data, error } = await query
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data: data ?? [] })
+    // Enrich with staff names and corrector names
+    const staffIds = [...new Set([
+      ...attendancesRaw.map(a => a.staffId),
+      ...attendancesRaw.map(a => a.correctedBy).filter(Boolean),
+    ])] as string[]
+
+    const staffData = staffIds.length > 0
+      ? await db.select({ id: schema.staff.id, displayName: schema.staff.displayName }).from(schema.staff).where(inArray(schema.staff.id, staffIds))
+      : []
+
+    const staffMap = new Map(staffData.map(s => [s.id, { display_name: s.displayName }]))
+
+    const data = attendancesRaw.map(a => ({
+      ...a,
+      staff: staffMap.get(a.staffId) ?? null,
+      corrector: a.correctedBy ? staffMap.get(a.correctedBy) ?? null : null,
+    }))
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
+  }
 })
 
 // PATCH /api/admin/attendances/:id
@@ -1002,25 +1330,27 @@ admin.patch('/attendances/:id', async (c) => {
     return c.json({ message: '修正理由は必須です' }, 400)
   }
 
-  const updateData: Record<string, unknown> = {
-    status: 'corrected',
-    corrected_by: staff.id,
-    correction_reason: body.correctionReason,
+  try {
+    const updateData: Record<string, unknown> = {
+      status: 'corrected',
+      correctedBy: staff.id,
+      correctionReason: body.correctionReason,
+    }
+    if (body.clockIn !== undefined) updateData.clockIn = new Date(body.clockIn)
+    if (body.clockOut !== undefined) updateData.clockOut = new Date(body.clockOut)
+    if (body.clockInNote !== undefined) updateData.clockInNote = body.clockInNote
+    if (body.clockOutNote !== undefined) updateData.clockOutNote = body.clockOutNote
+
+    const [data] = await db
+      .update(schema.attendances)
+      .set(updateData)
+      .where(eq(schema.attendances.id, id))
+      .returning()
+
+    return c.json({ data })
+  } catch (e) {
+    return c.json({ message: (e as Error).message }, 500)
   }
-  if (body.clockIn !== undefined) updateData.clock_in = body.clockIn
-  if (body.clockOut !== undefined) updateData.clock_out = body.clockOut
-  if (body.clockInNote !== undefined) updateData.clock_in_note = body.clockInNote
-  if (body.clockOutNote !== undefined) updateData.clock_out_note = body.clockOutNote
-
-  const { data, error } = await supabaseAdmin
-    .from('attendances')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) return c.json({ message: error.message }, 500)
-  return c.json({ data })
 })
 
 export { admin }
